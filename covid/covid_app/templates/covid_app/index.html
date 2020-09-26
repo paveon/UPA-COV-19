@@ -1,0 +1,371 @@
+{% extends 'covid_app/base.html' %}
+{% block title %}COV-19 Stats{% endblock %}
+
+{% block left_panel %}
+  {% with side_bars_enabled=True %}
+    {{ block.super }}
+  {% endwith %}
+{% endblock left_panel %}
+
+{% block scripts %}
+<script>
+      function importCovidData() {
+        $.get("/covid_app/", function(data) {
+          $("#myOutput").html(data);
+        }, "html");
+      }
+
+
+      function showSection(event, sectionID) {
+          let path = window.location.pathname;
+          let selected = $('#' + sectionID);
+          let tab = $('.section-tab.w3-border-red');
+          $('.section').hide();
+          tab.removeClass('w3-border-red');
+          selected.show();
+          if (event) {
+              $(event.target).addClass('w3-border-red');
+              sessionStorage.setItem(path + "selected_tab", event.target.id);
+          } else {
+              let tabID = sessionStorage.getItem(path + "selected_tab");
+              {#console.log(tabID);#}
+              if (tabID !== "") {
+                  let tab = $('#' + tabID);
+                  tab.addClass('w3-border-red');
+              }
+          }
+          sessionStorage.setItem(path + "selected_section", sectionID);
+      }
+
+      function showGameInfo(event, id) {
+          $(event.target).children().first().toggleClass('fa-angle-double-down');
+          $(event.target).children().first().toggleClass('fa-angle-double-up');
+          $("#" + id).toggleClass('accordion_open');
+      }
+
+      // Used to toggle the menu on smaller screens when clicking on the menu button
+      function openNav() {
+          let item = $("#navDemo");
+          if (item) {
+              item.toggleClass('w3-show');
+          }
+      }
+
+      function CloseModal(modalID) {
+          let modal = $('#' + modalID);
+          let errorDiv = $('.formErrors', modal);
+          errorDiv.hide();
+          modal.hide();
+      }
+
+
+      function OpenCreateModal(modalID, afterError = false) {
+          let modalType = modalID.split('_')[0];
+          let modal = $('#' + modalID);
+          let form = $('form', modal);
+          $('.modalTitle', modal).text('Create ' + modalType);
+          $('.formAction', form).val(modalType + '_create');
+          $('.formSubmit', form).val('Create ' + modalType);
+          form[0].reset();
+          $.ajax({
+              type: "GET",
+              dataType: "json",
+              async: true,
+              url: "{% url 'covid_app:index' %}",
+              data: {
+                  csrfmiddlewaretoken: '{{ csrf_token }}',
+                  'action': 'open_create_modal',
+                  'modal_type': modalType,
+              },
+              success: function (json) {
+                  if (!afterError) {
+                      $.each(json, function (key, value) {
+                          let field = $('#id_' + modalID + '-' + key);
+                          field.empty();
+                          $.each(value, function (idx, option) {
+                              field.append($("<option></option>")
+                                  .prop('value', option[0])
+                                  .text(option[1]));
+                          });
+                          field.children().first().prop('selected', true);
+                      });
+                  }
+
+                  modal.show();
+              },
+              error: function (xhr, error) {
+                  console.log("AJAX failure");
+                  console.log(xhr);
+                  console.log(error);
+              }
+          });
+      }
+
+      function OpenEditModal(modalID, objectID, afterError = false) {
+          let modalType = modalID.split('_')[0];
+          let modal = $('#' + modalID);
+          let form = $('form', modal);
+          $.ajax({
+              type: "GET",
+              dataType: "json",
+              async: true,
+              url: "{% url 'covid_app:index' %}",
+              data: {
+                  'csrfmiddlewaretoken': '{{ csrf_token }}',
+                  'action': 'open_edit_modal',
+                  'modal_type': modalType,
+                  'object_id': objectID,
+              },
+              success: function (json) {
+                  let roleField = $('#id_{{ player_form.prefix }}-role');
+                  let roleLabel = $('label[for="id_{{ player_form.prefix }}-role"]');
+                  if ('admin' in json) {
+                      console.log("ADMIN");
+                      roleField.hide();
+                      roleLabel.hide();
+                  } else {
+                      roleField.show();
+                      roleLabel.show();
+                  }
+
+                  if (!afterError) {
+                      console.log(json);
+                      $.each(json, function (key, value) {
+                          if (!key.endsWith('_queryset')) {
+                              let field = $('#id_' + modalID + '-' + key);
+                              if (field.prop('type') === 'checkbox') {
+                                  field.prop('checked', value);
+                              } else if (field.is('select')) {
+                                  /* Get queryset and delete old select options */
+                                  let queryset = json[key + '_queryset'];
+                                  if (queryset) {
+                                      let nullOption = field.children().first();
+                                      field.empty();
+                                      if (nullOption.text().includes('---')) {
+                                          nullOption.prop('selected', false);
+                                          field.append(nullOption);
+                                      }
+                                      /* Populate select with options from provided queryset */
+                                      $.each(queryset, function (idx, option) {
+                                          field.append($("<option></option>")
+                                              .prop('value', option.id)
+                                              .text(option.value));
+                                      });
+                                  }
+                                  $('option', field).prop('selected', false);
+                                  if (value) {
+                                      if ($.isArray(value)) {
+                                          $.each(value, function (idx, value) {
+                                              let option = $('option[value="' + value + '"]', field);
+                                              option.prop('selected', true);
+                                          });
+                                      } else {
+                                          let option = $('option[value="' + value + '"]', field);
+                                          option.prop('selected', true);
+                                      }
+                                  } else {
+                                      let nullOption = field.children().first();
+                                      nullOption.prop('selected', true);
+                                  }
+                              } else {
+                                  field.val(value);
+                              }
+                          }
+                      });
+                  }
+
+                  let formUnique = $('.formUnique', form);
+                  $('.modalTitle', modal).text('Edit \'' + formUnique.val() + '\'');
+                  $('.formAction', form).val(modalType + '_edit');
+                  $('.formSubmit', form).val('Save changes');
+                  $('.formID', form).val(objectID);
+                  modal.show();
+              },
+              error: function (xhr, error) {
+                  console.log("AJAX failure");
+                  console.log(xhr);
+                  console.log(error);
+              }
+          });
+      }
+
+      function CallbackConfig(args) {
+          this.func = 'buttonClick';
+          this.args = args;
+      }
+
+
+      function enableButton(event) {
+          $('#' + event.data.buttonID).prop('disabled', false);
+      }
+
+
+      function openDialog(text, callbackConfig, event = null) {
+          if (event) {
+              let target = $(event.target);
+              if (!target.is('button')) {
+                  /* Find first parent button, event might have
+                   * caught span element in button */
+                  target = target.parent('button');
+              }
+              let buttons = $('#dialog_decline, #dialog_close');
+              let buttonID = target.prop('id');
+              buttons.off();
+              buttons.on('click', {buttonID: buttonID}, enableButton);
+          }
+
+          let confirmButton = $('#dialog_confirm');
+          if (callbackConfig) {
+              let onclickString = callbackConfig.func + '(event, ';
+              let length = callbackConfig.args.length;
+              for (let i = 0; i < length; i++) {
+                  onclickString += '\'' + callbackConfig.args[i] + '\', '
+              }
+              onclickString += ')';
+              confirmButton.attr('onclick', onclickString);
+          }
+          confirmButton.prop('disabled', false);
+          $('#confirm_bar').show();
+          $('#dialog_text').text(text);
+          $('#dialog').show();
+      }
+
+      var clickTimeout;
+
+      function baseButtonClick(event, jsonData, targetURL, callback) {
+          /* Protect buttons from multiple clicks by disabling them and
+           * using timeout to avoid multiple ajax calls if somehow two calls
+           * made it through disabled button */
+          let target = $(event.target);
+          if (!target.is('button')) {
+              /* Find first parent button, event might have
+               * caught span element in button */
+              target = target.parent('button');
+          }
+          target.prop('disabled', true);
+          clearTimeout(clickTimeout);
+          document.body.style.cursor = 'wait';
+          clickTimeout = setTimeout(function () {
+              jsonData['csrfmiddlewaretoken'] = '{{ csrf_token }}';
+              $.ajax({
+                  type: 'POST',
+                  url: targetURL,
+                  data: jsonData,
+                  dataType: "json",
+                  async: true,
+                  success: function (json) {
+                      document.body.style.cursor = 'default';
+                      callback(json);
+                  },
+                  error: function (xhr, error) {
+                      console.log("AJAX failure");
+                      console.log(xhr);
+                      console.log(error);
+                  }
+              });
+          }, 20);
+      }
+
+
+      function xhrRedirect(targetURL) {
+          let xhr = new XMLHttpRequest();
+          xhr.open('POST', targetURL, true);
+          xhr.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
+          xhr.onload = function () {
+              location.reload();
+              document.open('text/html');
+              document.write(this.responseText);
+              document.close();
+          };
+          xhr.send('csrfmiddlewaretoken={{ csrf_token }}');
+      }
+
+
+      $(document).ready(function () {
+          let path = window.location.pathname;
+          let sectionID = sessionStorage.getItem(path + "selected_section");
+          if (sectionID) {
+              showSection(null, sectionID);
+          } else {
+              let tabs = $('.section-tab');
+              if (tabs.length > 0) {
+                  let firstTab = tabs.first();
+                  firstTab.addClass('w3-border-red');
+                  if (firstTab.attr('id').endsWith('_tab')) {
+                      let sectionID = firstTab.attr('id').slice(0, -4);
+                      let section = $('#' + sectionID);
+                      if (section) {
+                          section.show();
+                      }
+                  }
+              }
+          }
+      });
+
+  </script>
+{% endblock scripts %}
+
+{% block content %}
+  <!-- Middle Column -->
+  <div style="flex: 2 1 0">
+    <div class="" style="width: 900px; height: 500px; margin: auto; border: 2px solid black">
+      <button onclick="importCovidData()" type="button" id="data-import-button" class="w3-button w3-block w3-teal">
+        <b>Import COVID-19 data</b>
+      </button>
+
+<!--      <div class="w3-card-4 flex-item gameCard">-->
+<!--        <header class="w3-block w3-center gameHeader">-->
+<!--          {% if game.image_url %}-->
+<!--            <img src="{{ game.image_url }}" alt="{{ game.name }}" class="gameImg">-->
+<!--          {% else %}-->
+<!--            <h3 class="w3-text-white w3-display-middle">No image</h3>-->
+<!--          {% endif %}-->
+<!--        </header>-->
+<!--        <div class="w3-container w3-center">-->
+<!--          <a href="{% url 'covid_app:index' %}" class="w3-block w3-section-8 gameLink">-->
+<!--            {{ game.name }}-->
+<!--          </a>-->
+
+<!--          <div id="game_info_{{ game.id }}" class="accordion">-->
+<!--            <ul class="w3-ul">-->
+<!--              <li>Released: {{ game.release_date|default:"unknown" }}</li>-->
+<!--              <li>Genre: {{ game.genre|default:"unknown" }}</li>-->
+<!--              <li>Publisher: {{ game.publisher|default:"unknown" }}</li>-->
+<!--            </ul>-->
+<!--          </div>-->
+<!--        </div>-->
+<!--      </div>-->
+
+
+<!--      {% for game in game_list %}-->
+<!--        <div class="w3-card-4 flex-item gameCard">-->
+<!--          <header class="w3-block w3-center gameHeader">-->
+<!--            {% if game.image_url %}-->
+<!--              <img src="{{ game.image_url }}" alt="{{ game.name }}" class="gameImg">-->
+<!--            {% else %}-->
+<!--              <h3 class="w3-text-white w3-display-middle">No image</h3>-->
+<!--            {% endif %}-->
+<!--          </header>-->
+<!--          <div class="w3-container w3-center">-->
+<!--            <a href="{% url 'leagues:game_detail' game.slug %}" class="w3-block w3-section-8 gameLink">-->
+<!--              {{ game.name }}-->
+<!--            </a>-->
+
+<!--            <div id="game_info_{{ game.id }}" class="accordion">-->
+<!--              <ul class="w3-ul">-->
+<!--                <li>Released: {{ game.release_date|default:"unknown" }}</li>-->
+<!--                <li>Genre: {{ game.genre|default:"unknown" }}</li>-->
+<!--                <li>Publisher: {{ game.publisher|default:"unknown" }}</li>-->
+<!--              </ul>-->
+<!--            </div>-->
+<!--          </div>-->
+<!--          <button onclick="showGameInfo(event, 'game_info_{{ game.id }}')" class="w3-block w3-button"-->
+<!--                  style="padding: 0">-->
+<!--            <i class="fa fa-angle-double-down"></i>-->
+<!--          </button>-->
+<!--        </div>-->
+<!--      {% endfor %}-->
+    </div>
+    <!-- End Middle Column -->
+  </div>
+{% endblock %}
