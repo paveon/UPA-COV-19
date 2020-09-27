@@ -6,4 +6,5 @@ app_name = "covid_app"
 
 urlpatterns = [
     path('', views.index, name='index'),
+    path('clear_db/', views.clear_db, name='clear_db'),
 ]

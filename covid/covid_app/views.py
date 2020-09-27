@@ -2,7 +2,7 @@ import pymongo
 from django.shortcuts import render
 from django.http import HttpResponse
 from django.template import loader
-from covid_app.models import *
+from .models import *
 
 
 NUTS_CODES_DICT = {
@@ -116,12 +116,24 @@ LAU_CODES_DICT = {
 }
 
 
+def clear_db(request):
+    if request.is_ajax():
+        print("Clear DB")
+        Region.objects.all().delete()
+        County.objects.all().delete()
+        Deceased.objects.all().delete()
+
+    return render(request, 'covid_app/index.html')
+
+
 def index(request):
     if request.is_ajax():
         print("Python import code")
+        Region.objects.all().delete()
         for nuts_code, region_name in NUTS_CODES_DICT.items():
             region = Region.objects.create(pk=nuts_code, name=region_name)
 
+        County.objects.all().delete()
         for lau_code, county_name in LAU_CODES_DICT.items():
             region = County.objects.create(pk=lau_code, name=county_name)
 
@@ -133,9 +145,12 @@ def index(request):
             cursor = deaths_collection.find({})
             print(deaths_collection.estimated_document_count())
             for document in cursor:
-                pass
+                Deceased.objects.create(date_of_death=document['datum'],
+                                        age=document['vek'],
+                                        gender=document['pohlavi'],
+                                        associated_region=Region.objects.get(pk=document['kraj_nuts_kod']),
+                                        associated_county=County.objects.get(pk=document['okres_lau_kod']))
 
-        return render(request, 'covid_app/index.html', {'data': 'test'})
-
-    else:
-        return render(request, 'covid_app/index.html')
+    deceased_list = Deceased.objects.order_by('date_of_death')
+    context = {'deceased_list': deceased_list}
+    return render(request, 'covid_app/index.html', context)
