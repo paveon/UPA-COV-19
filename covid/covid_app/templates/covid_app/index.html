@@ -10,11 +10,37 @@
 {% block scripts %}
 <script>
   function clearDb() {
-    $.get("/covid_app/clear_db/", null);
+    $.ajax({
+      type: 'POST',
+      url: "{% url 'covid_app:index' %}",
+      data: {
+        csrfmiddlewaretoken: '{{ csrf_token }}',
+        action: 'clear_db'
+      },
+      dataType: '',
+      async:true,
+      success: function(json) {
+        location.reload();
+      },
+    });
+    // location.href="{% url 'covid_app:index' %}";
+    // $.get("/covid_app/clear_db/", null);
   }
 
-  function importCovidData() {
-    $.get("/covid_app/", null);
+  function importData() {
+    $.ajax({
+      type: 'POST',
+      url: "{% url 'covid_app:index' %}",
+      data: {
+        csrfmiddlewaretoken: '{{ csrf_token }}',
+        action: 'import_data'
+      },
+      dataType: '',
+      async:true,
+      success: function (json) {
+        location.reload();
+      },
+    });
   }
 
 
@@ -284,24 +310,42 @@
 
 
   $(document).ready(function () {
-      let path = window.location.pathname;
-      let sectionID = sessionStorage.getItem(path + "selected_section");
-      if (sectionID) {
-          showSection(null, sectionID);
-      } else {
-          let tabs = $('.section-tab');
-          if (tabs.length > 0) {
-              let firstTab = tabs.first();
-              firstTab.addClass('w3-border-red');
-              if (firstTab.attr('id').endsWith('_tab')) {
-                  let sectionID = firstTab.attr('id').slice(0, -4);
-                  let section = $('#' + sectionID);
-                  if (section) {
-                      section.show();
-                  }
-              }
-          }
+    let path = window.location.pathname;
+    let sectionID = sessionStorage.getItem(path + "selected_section");
+    if (sectionID) {
+        showSection(null, sectionID);
+    } else {
+        let tabs = $('.section-tab');
+        if (tabs.length > 0) {
+            let firstTab = tabs.first();
+            firstTab.addClass('w3-border-red');
+            if (firstTab.attr('id').endsWith('_tab')) {
+                let sectionID = firstTab.attr('id').slice(0, -4);
+                let section = $('#' + sectionID);
+                if (section) {
+                    section.show();
+                }
+            }
+        }
+    }
+
+    // const deceased_data = JSON.parse("{{deceased_data|escapejs}}");
+    // console.log(deceased_data);
+
+    {% if deceased_list %}
+    const data = [
+      {
+        y: JSON.parse("{{age_data|escapejs}}"),
+        boxpoints: 'all',
+        jitter: 0.3,
+        pointpos: -1.8,
+        type: 'box',
+        name: 'Age at death'
       }
+    ];
+
+    Plotly.newPlot('box-graph-div', data);
+    {% endif %}
   });
 
 </script>
@@ -310,20 +354,19 @@
 {% block content %}
   <!-- Middle Column -->
   <div style="flex: 2 1 0">
-    <div class="" style="width: 900px; height: 500px; margin: auto; border: 2px solid black">
-      <button onclick="importCovidData()" type="button" id="data-import-button" class="w3-button w3-block w3-teal">
+    <div class="" style="width: 900px; margin: auto; border: 2px solid black">
+      <button onclick="importData()" type="button" id="data-import-button" class="w3-button w3-block w3-teal">
         <b>Import COVID-19 data</b>
       </button>
       <button onclick="clearDb()" type="button" id="clear-db-button" class="w3-button w3-block w3-teal">
         <b>Clear database</b>
       </button>
 
-
-      <div id="deceased_table" class="w3-container w3-section">
+    {% if deceased_list %}
+    <div id="deceased_table" class="w3-container w3-section">
         <h3>Deceased</h3>
         <div class="w3-card w3-round" style="overflow-y:auto; max-height: 325px">
 
-          {% if deceased_list %}
           <table class="w3-table w3-striped w3-bordered w3-hoverable">
             <thead>
               <tr>
@@ -348,9 +391,15 @@
             {% endfor %}
             </tbody>
           </table>
-          {% endif %}
         </div>
+
+        <h3>Graphs</h3>
+        <div class="w3-card w3-round" style="width: 50%" id="box-graph-div"></div>
+<!--        <div id="graphs" class="w3-container w3-section">-->
+<!--        </div>-->
+
       </div>
+      {% endif %}
     </div>
     <!-- End Middle Column -->
   </div>
