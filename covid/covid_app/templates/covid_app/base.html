@@ -1,220 +1,224 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>{% block title %} {% endblock %}</title>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  {% load static %}
-  <script src="{% static 'covid_app/js/jquery-3.3.1.min.js' %}"></script>
-  <link rel="stylesheet" href="{% static 'covid_app/css/w3.css' %}">
-  <link rel="stylesheet" href="{% static 'covid_app/css/style.css' %}">
+    <title>{% block title %} {% endblock %}</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    {% load static %}
+    <script src="{% static 'covid_app/js/jquery-3.3.1.min.js' %}"></script>
+    <link rel="stylesheet" href="{% static 'covid_app/css/w3.css' %}">
+    <link rel="stylesheet" href="{% static 'covid_app/css/style.css' %}">
 
-  <link rel="stylesheet" href="https://www.w3schools.com/lib/w3-theme-blue-grey.css">
-  <link rel='stylesheet' href='https://fonts.googleapis.com/css?family=Open+Sans'>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Audiowide">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Quicksand:500">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
-  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.5.0/css/all.css"
-        integrity="sha384-B4dIYHKNBt8Bc12p+WXckhzcICo0wtJAoU8YZTY5qE0Id1GSseTk6S+L3BlXeVIU" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://www.w3schools.com/lib/w3-theme-blue-grey.css">
+    <link rel='stylesheet' href='https://fonts.googleapis.com/css?family=Open+Sans'>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Audiowide">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Quicksand:500">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.5.0/css/all.css"
+          integrity="sha384-B4dIYHKNBt8Bc12p+WXckhzcICo0wtJAoU8YZTY5qE0Id1GSseTk6S+L3BlXeVIU" crossorigin="anonymous">
 
-  <link rel="stylesheet" href="//code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
-  <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
-  <script src='https://cdn.plot.ly/plotly-latest.min.js'></script>
-  {{ game_form.media }}
+    <link rel="stylesheet" href="//code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+    <script src='https://cdn.plot.ly/plotly-latest.min.js'></script>
+    {{ game_form.media }}
 
-  {% block scripts %}
-  {% endblock %}
+    {% block scripts %}
+    {% endblock %}
 </head>
 <body class="w3-theme-l5">
 <a name="top"></a>
 <!-- Navbar -->
 <div class="w3-top header">
-  <div class="w3-bar w3-theme-d2 w3-left-align w3-large">
-    <a class="w3-bar-item w3-button w3-hide-medium w3-hide-large w3-right w3-padding-large w3-hover-white w3-large w3-theme-d2"
-       href="javascript:void(0);" onclick="openNav()"><i class="fa fa-bars"></i></a>
+    <div class="w3-bar w3-theme-d2 w3-left-align w3-large">
+        <a class="w3-bar-item w3-button w3-hide-medium w3-hide-large w3-right w3-padding-large w3-hover-white w3-large w3-theme-d2"
+           href="javascript:void(0);" onclick="openNav()"><i class="fa fa-bars"></i></a>
 
-    <a href="{% url 'covid_app:index' %}" class="w3-bar-item w3-button w3-padding-large w3-theme-d4 logoText"
-       title="Homepage">
-      <i class="fa fa-home w3-margin-right"></i>#APP_NAME
-    </a>
+        <a href="{% url 'covid_app:index' %}" class="w3-bar-item w3-button w3-padding-large w3-theme-d4 logoText"
+           title="Homepage">
+            <i class="fa fa-home w3-margin-right"></i>#APP_NAME
+        </a>
 
-    <a href="{% url 'covid_app:index' %}" class="w3-bar-item w3-button w3-hide-small w3-padding-large w3-hover-white"
-       title="Games">
-      <i class="fa fa-gamepad"></i>
-    </a>
+        <a href="{% url 'covid_app:index' %}"
+           class="w3-bar-item w3-button w3-hide-small w3-padding-large w3-hover-white"
+           title="Games">
+            <i class="fa fa-gamepad"></i>
+        </a>
 
-    <a href="{% url 'covid_app:index' %}" class="w3-bar-item w3-button w3-hide-small w3-padding-large w3-hover-white"
-       title="Social">
-      <i class="fa fa-user"></i>
-    </a>
+        <a href="{% url 'covid_app:index' %}"
+           class="w3-bar-item w3-button w3-hide-small w3-padding-large w3-hover-white"
+           title="Social">
+            <i class="fa fa-user"></i>
+        </a>
 
-    <a href="{% url 'covid_app:index' %}"
-       class="w3-bar-item w3-button w3-hide-small w3-padding-large w3-hover-white"
-       title="Tournaments">
-      <i class="fa fa-trophy"></i>
-    </a>
+        <a href="{% url 'covid_app:index' %}"
+           class="w3-bar-item w3-button w3-hide-small w3-padding-large w3-hover-white"
+           title="Tournaments">
+            <i class="fa fa-trophy"></i>
+        </a>
 
-    {% if user.is_superuser or user.is_staff %}
-      <a href="{% url 'covid_app:index' %}"
-         class="w3-bar-item w3-button w3-hide-small w3-padding-large w3-hover-white" title="Management">
-        <i class="fa fa-cog"></i>
-      </a>
-    {% endif %}
+        {% if user.is_superuser or user.is_staff %}
+            <a href="{% url 'covid_app:index' %}"
+               class="w3-bar-item w3-button w3-hide-small w3-padding-large w3-hover-white" title="Management">
+                <i class="fa fa-cog"></i>
+            </a>
+        {% endif %}
 
-    {% if user.is_authenticated %}
-      <a href="{% url 'covid_app:index' %}"
-         class="w3-bar-item w3-button w3-hide-small w3-right w3-padding-large w3-hover-white"
-         title="My Account">
-        Logout <i class="fas fa-sign-out-alt w3-margin-left"></i>
-      </a>
-    {% else %}
-      <a href="{% url 'covid_app:index' %}"
-         class="w3-bar-item w3-button w3-hide-small w3-right w3-padding-large w3-hover-white"
-         title="Annonymous user">Log in
-        <i class="fa fa-user-secret w3-margin-left"></i>
-      </a>
-    {% endif %}
-  </div>
+        {% if user.is_authenticated %}
+            <a href="{% url 'covid_app:index' %}"
+               class="w3-bar-item w3-button w3-hide-small w3-right w3-padding-large w3-hover-white"
+               title="My Account">
+                Logout <i class="fas fa-sign-out-alt w3-margin-left"></i>
+            </a>
+        {% else %}
+            <a href="{% url 'covid_app:index' %}"
+               class="w3-bar-item w3-button w3-hide-small w3-right w3-padding-large w3-hover-white"
+               title="Annonymous user">Log in
+                <i class="fa fa-user-secret w3-margin-left"></i>
+            </a>
+        {% endif %}
+    </div>
 </div>
 
 <!-- Navbar on small screens -->
 <div id="navDemo" class="w3-bar-block w3-theme-d2 w3-hide w3-hide-large w3-hide-medium w3-large">
-  <a href="#" class="w3-bar-item w3-button w3-padding-large">Link 1</a>
-  <a href="#" class="w3-bar-item w3-button w3-padding-large">Link 2</a>
-  <a href="#" class="w3-bar-item w3-button w3-padding-large">Link 3</a>
-  <a href="#" class="w3-bar-item w3-button w3-padding-large">My Profile</a>
+    <a href="#" class="w3-bar-item w3-button w3-padding-large">Link 1</a>
+    <a href="#" class="w3-bar-item w3-button w3-padding-large">Link 2</a>
+    <a href="#" class="w3-bar-item w3-button w3-padding-large">Link 3</a>
+    <a href="#" class="w3-bar-item w3-button w3-padding-large">My Profile</a>
 </div>
 
 <div class="w3-container" style="flex:1 0 auto; padding: 0;">
 
-  <div class="flex-container" style="flex-wrap: nowrap" id="top">
+    <div class="flex-container" style="flex-wrap: nowrap" id="top">
 
-    <!-- Left Column -->
-    {% block left_panel %}
-      {% if user.is_authenticated and side_bars_enabled %}
-        <div style="max-width: 250px; flex: 1 1 0; margin-left: 16px;">
-          <!-- Profile -->
-          <div class="w3-card w3-round w3-white">
-            <div class="w3-container">
-              <a href="{% url 'covid_app:index' user.player.slug %}">
-                <h4 class="w3-center" style="font-family: 'Audiowide', cursive;">
+        <!-- Left Column -->
+        {% block left_panel %}
+            {% if user.is_authenticated and side_bars_enabled %}
+                <div style="max-width: 250px; flex: 1 1 0; margin-left: 16px;">
+                    <!-- Profile -->
+                    <div class="w3-card w3-round w3-white">
+                        <div class="w3-container">
+                            <a href="{% url 'covid_app:index' user.player.slug %}">
+                                <h4 class="w3-center" style="font-family: 'Audiowide', cursive;">
 
-                  {{ user.player.nickname }}
+                                    {{ user.player.nickname }}
 
-                </h4>
-              </a>
-              <p class="w3-center">
-                {% if user.player.image_url %}
-                  <img src="{{ user.player.image_url }}" class="w3-circle"
-                       style="width:128px" alt="Avatar">
-                {% else %}
-                  <img src="{% static 'covid_app/images/default_avatar.png' %}" class="w3-circle"
-                       style="height:128px;width:128px" alt="Avatar">
-                {% endif %}
-              </p>
-              <hr>
-              {% if user.player.full_name %}
-                <p><i class="fas fa-id-card fa-fw w3-margin-right w3-text-theme"></i>
-                  <b>{{ user.player.full_name }}</b>
-                </p>
-              {% endif %}
-              {% if user.player.country %}
-                <p><i class="fa fa-home fa-fw w3-margin-right w3-text-theme"></i>
-                  <b>{{ user.player.country.name }}</b>
-                </p>
-              {% endif %}
-              {% if user.player.birth_date %}
-                <p><i class="fa fa-birthday-cake fa-fw w3-margin-right w3-text-theme"></i>
-                  <b>{{ user.player.birth_date|date:"j.n.Y" }}</b>
-                </p>
-              {% endif %}
-            </div>
-          </div>
-          <br>
+                                </h4>
+                            </a>
+                            <p class="w3-center">
+                                {% if user.player.image_url %}
+                                    <img src="{{ user.player.image_url }}" class="w3-circle"
+                                         style="width:128px" alt="Avatar">
+                                {% else %}
+                                    <img src="{% static 'covid_app/images/default_avatar.png' %}" class="w3-circle"
+                                         style="height:128px;width:128px" alt="Avatar">
+                                {% endif %}
+                            </p>
+                            <hr>
+                            {% if user.player.full_name %}
+                                <p><i class="fas fa-id-card fa-fw w3-margin-right w3-text-theme"></i>
+                                    <b>{{ user.player.full_name }}</b>
+                                </p>
+                            {% endif %}
+                            {% if user.player.country %}
+                                <p><i class="fa fa-home fa-fw w3-margin-right w3-text-theme"></i>
+                                    <b>{{ user.player.country.name }}</b>
+                                </p>
+                            {% endif %}
+                            {% if user.player.birth_date %}
+                                <p><i class="fa fa-birthday-cake fa-fw w3-margin-right w3-text-theme"></i>
+                                    <b>{{ user.player.birth_date|date:"j.n.Y" }}</b>
+                                </p>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <br>
 
-          <!-- Accordion -->
-          {% if user.player and user.player.tournaments.1 %}
-            <div class="w3-card w3-round w3-white">
-              <div class="w3-white w3-center w3-block w3-padding-3"><h5><b>Active tournaments</b></h5></div>
-              {% for tournament in user.player.tournaments.1 %}
-                <a href="{% url 'covid_app:index' tournament.slug %}"
-                   class="w3-button w3-block w3-theme-l1 w3-left-align">
-                  {{ tournament.name }} {{ tournament.end_date|date:"j.n.Y" }}
-                </a>
-              {% endfor %}
-              <div id="Demo3" class="w3-hide w3-container">
-                <div class="w3-row-padding">
+                    <!-- Accordion -->
+                    {% if user.player and user.player.tournaments.1 %}
+                        <div class="w3-card w3-round w3-white">
+                            <div class="w3-white w3-center w3-block w3-padding-3"><h5><b>Active tournaments</b></h5>
+                            </div>
+                            {% for tournament in user.player.tournaments.1 %}
+                                <a href="{% url 'covid_app:index' tournament.slug %}"
+                                   class="w3-button w3-block w3-theme-l1 w3-left-align">
+                                    {{ tournament.name }} {{ tournament.end_date|date:"j.n.Y" }}
+                                </a>
+                            {% endfor %}
+                            <div id="Demo3" class="w3-hide w3-container">
+                                <div class="w3-row-padding">
+                                </div>
+                            </div>
+                        </div>
+                        <br>
+                    {% endif %}
+
+                    {% if user.player and user.player.tournaments.0 %}
+                        <div class="w3-card w3-round w3-white">
+                            <div class="w3-white w3-center w3-block w3-padding-3"><h5><b>Upcoming tournaments</b></h5>
+                            </div>
+                            {% for tournament in user.player.tournaments.0 %}
+                                <a href="{% url 'covid_app:index' tournament.slug %}"
+                                   class="w3-button w3-block w3-theme-l1 w3-left-align">
+                                    {{ tournament.name }} {{ tournament.opening_date|date:"j.n.Y" }}
+                                </a>
+                            {% endfor %}
+                            <div id="Demo3" class="w3-hide w3-container">
+                                <div class="w3-row-padding">
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
                 </div>
-              </div>
-            </div>
-            <br>
-          {% endif %}
+            {% endif %}
+        {% endblock %}
+        <!-- End Left Column -->
 
-          {% if user.player and user.player.tournaments.0 %}
-            <div class="w3-card w3-round w3-white">
-              <div class="w3-white w3-center w3-block w3-padding-3"><h5><b>Upcoming tournaments</b></h5></div>
-              {% for tournament in user.player.tournaments.0 %}
-                <a href="{% url 'covid_app:index' tournament.slug %}"
-                   class="w3-button w3-block w3-theme-l1 w3-left-align">
-                  {{ tournament.name }} {{ tournament.opening_date|date:"j.n.Y" }}
-                </a>
-              {% endfor %}
-              <div id="Demo3" class="w3-hide w3-container">
-                <div class="w3-row-padding">
-                </div>
-              </div>
-            </div>
-          {% endif %}
-        </div>
-      {% endif %}
-    {% endblock %}
-    <!-- End Left Column -->
-
-    {% block content %}
-    {% endblock %}
+        {% block content %}
+        {% endblock %}
 
 
-    <!-- End Grid -->
-  </div>
-  <!-- End Page Container -->
+        <!-- End Grid -->
+    </div>
+    <!-- End Page Container -->
 </div>
 
 
 <div id="dialog" class="w3-modal" style="display: none">
-  <div class="w3-modal-content w3-card-4" style="max-width:600px">
+    <div class="w3-modal-content w3-card-4" style="max-width:600px">
 
-    <header class="w3-container w3-center w3-light-grey w3-border-bottom"
-            style="padding: 0 60px 0 60px">
-      <h3 id="dialog_text">Placeholder Text</h3>
+        <header class="w3-container w3-center w3-light-grey w3-border-bottom"
+                style="padding: 0 60px 0 60px">
+            <h3 id="dialog_text">Placeholder Text</h3>
 
-      <button onclick="$('#dialog').hide()" type="button" id="dialog_close"
-              class="w3-button w3-display-topright w3-red">
-        <i class="fa fa-times"></i>
-      </button>
-    </header>
+            <button onclick="$('#dialog').hide()" type="button" id="dialog_close"
+                    class="w3-button w3-display-topright w3-red">
+                <i class="fa fa-times"></i>
+            </button>
+        </header>
 
-    <div class="w3-container w3-border-top w3-padding-16 w3-light-grey" id="confirm_bar">
-      <button onclick="$('#dialog').hide()" type="button" id="dialog_decline"
-              class="w3-button w3-red">No
-      </button>
+        <div class="w3-container w3-border-top w3-padding-16 w3-light-grey" id="confirm_bar">
+            <button onclick="$('#dialog').hide()" type="button" id="dialog_decline"
+                    class="w3-button w3-red">No
+            </button>
 
-      <button onclick="$('#dialog').hide()" type="button" id="dialog_confirm"
-              class="w3-button w3-green w3-right">Yes
-      </button>
+            <button onclick="$('#dialog').hide()" type="button" id="dialog_confirm"
+                    class="w3-button w3-green w3-right">Yes
+            </button>
+        </div>
     </div>
-  </div>
 </div>
 {% block endpage %}
 {% endblock %}
 <!-- Footer -->
 <footer class="w3-container w3-theme-d3 w3-padding">
-  <h4 class="logoText">#APP_NAME</h4>
+    <h4 class="logoText">#APP_NAME</h4>
 </footer>
 
 <footer class="w3-padding w3-container w3-theme-d5" style="position: relative;">
-  <span>© #DATE FIT</span>
-  <span style="float: right;">#Authors</span>
-  <a href="#top"><i class="fas fa-arrow-up w3-display-middle"></i></a>
+    <span>© #DATE FIT</span>
+    <span style="float: right;">#Authors</span>
+    <a href="#top"><i class="fas fa-arrow-up w3-display-middle"></i></a>
 </footer>
 
 

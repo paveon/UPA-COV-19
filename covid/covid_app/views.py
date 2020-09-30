@@ -3,6 +3,7 @@ from django.shortcuts import render
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.template import loader
 from django.urls import reverse
+from django.apps import AppConfig, apps
 from django.utils.decorators import method_decorator
 from django.views import generic, View
 from django.core import serializers
@@ -17,39 +18,102 @@ class IndexView(generic.TemplateView):
     template_name = 'covid_app/index.html'
 
     def clear_db(self):
-        Region.objects.all().delete()
-        County.objects.all().delete()
         Deceased.objects.all().delete()
         ConfirmedCase.objects.all().delete()
+        PerformedTests.objects.all().delete()
         # return render(request, 'covid_app/index.html')
         # return HttpResponseRedirect(reverse('covid_app:index'))
 
+    def populate_area_tables(self):
+        NUTS_0_AREA.objects.all().delete()
+        NUTS_1_AREA.objects.all().delete()
+        NUTS_2_AREA.objects.all().delete()
+        NUTS_3_AREA.objects.all().delete()
+        NUTS_4_AREA.objects.all().delete()
+        covid_app = apps.get_app_config('covid_app')
+
+        def create_areas(areas, level, higher_unit):
+            model_name = f"NUTS_{level}_AREA"
+            model = covid_app.get_model(model_name)
+            for code, data in areas.items():
+                name = data['name'] if level < 4 else data
+                if higher_unit:
+                    area = model.objects.create(pk=code, name=name, nuts_higher=higher_unit)
+                else:
+                    area = model.objects.create(pk=code, name=name)
+                if level < 4:
+                    sub_areas = data.get(f"NUTS_{level + 1}_AREAS")
+                    if sub_areas:
+                        create_areas(sub_areas, level + 1, area)
+
+        create_areas(NUTS_0_AREAS, 0, None)
+        print("Area tables populated")
+        # Region.objects.bulk_create([Region(pk=code, name=name) for code, name in NUTS_CODES_DICT.items()])
+        # County.objects.bulk_create([County(pk=code, name=name) for code, name in LAU_CODES_DICT.items()])
+        # Country.objects.bulk_create([Country(pk=code, name=name) for code, name in COUNTRY_CODES_DICT.items()])
+
     def import_data(self):
-        Region.objects.all().delete()
-        for nuts_code, region_name in NUTS_CODES_DICT.items():
-            Region.objects.create(pk=nuts_code, name=region_name)
+        if not NUTS_0_AREA.objects.exists() \
+                or not NUTS_1_AREA.objects.exists() \
+                or not NUTS_2_AREA.objects.exists() \
+                or not NUTS_3_AREA.objects.exists() \
+                or not NUTS_4_AREA.objects.exists():
+            self.populate_area_tables()
 
-        County.objects.all().delete()
-        for lau_code, county_name in LAU_CODES_DICT.items():
-            County.objects.create(pk=lau_code, name=county_name)
+        # nuts_3_cache = {x.pk: x for x in NUTS_3_AREA.objects.all()}
+        nuts_4_cache = {x.pk: x for x in NUTS_4_AREA.objects.all()}
+        nuts_0_cache = {x.pk: x for x in NUTS_0_AREA.objects.all()}
+        cz_cache = nuts_0_cache['CZ']
 
-        Country.objects.all().delete()
-        for csu_code, country_name in COUNTRY_CODES_DICT.items():
-            Country.objects.create(pk=csu_code, name=country_name)
+        deaths_mapping = {
+            'date_of_death': 'datum',
+            'age': 'vek',
+            'gender': 'pohlavi',
+            # 'nuts_3_area': {'name': 'kraj_nuts_kod', 'obj_cache': nuts_3_cache},
+            'nuts_4_area': {'name': 'okres_lau_kod', 'obj_cache': nuts_4_cache}
+        }
+
+        case_mapping = {
+            'report_date': 'datum',
+            'age': 'vek',
+            'gender': 'pohlavi',
+            # 'nuts_3_area': {'name': 'kraj_nuts_kod', 'obj_cache': nuts_3_cache},
+            'nuts_4_area': {'name': 'okres_lau_kod', 'obj_cache': nuts_4_cache},
+            'origin_country': {'name': 'nakaza_zeme_csu_kod', 'obj_cache': nuts_0_cache, 'default': cz_cache}
+        }
+
+        test_mapping = {
+            'date': 'datum',
+            'test_count': 'prirustkovy_pocet_testu',
+            # 'cumulative_test_count': 'kumulativni_pocet_testu'
+        }
+
+        def apply_mapping(mapping, document):
+            object_dict = {}
+            for key, value in mapping.items():
+                if isinstance(value, str):
+                    object_dict[key] = document[value]
+                else:
+                    object_dict[key] = value.get('obj_cache').get(document[value.get('name')], value.get('default'))
+            return object_dict
+
+        def import_collection(collection_name, model_cls, mapping):
+            if collection_name not in covid_db.list_collection_names():
+                return
+            collection = covid_db[collection_name]
+            print(collection.estimated_document_count())
+            cursor = collection.find({})
+            objects = [model_cls(**apply_mapping(mapping, document)) for document in cursor]
+            model_cls.objects.bulk_create(objects)
 
         db_client = pymongo.MongoClient("mongodb://localhost:27017/")
         print(f"Existing DBs: {db_client.list_database_names()}")
         covid_db = db_client['covid_data']
-        if 'daily_deaths' in covid_db.list_collection_names():
-            deaths_collection = covid_db['daily_deaths']
-            cursor = deaths_collection.find({})
-            print(deaths_collection.estimated_document_count())
-            for document in cursor:
-                Deceased.objects.create(date_of_death=document['datum'],
-                                        age=document['vek'],
-                                        gender=document['pohlavi'],
-                                        associated_region=Region.objects.get(pk=document['kraj_nuts_kod']),
-                                        associated_county=County.objects.get(pk=document['okres_lau_kod']))
+        import_collection('daily_deaths', Deceased, deaths_mapping)
+        # import_collection('confirmed_cases', ConfirmedCase, case_mapping)
+        import_collection('daily_tests', PerformedTests, test_mapping)
+        print(f"Total tests: {PerformedTests.objects.cumulative_test_count()}")
+        print("Import finished")
 
     def __init__(self):
         super().__init__()
@@ -57,6 +121,7 @@ class IndexView(generic.TemplateView):
         self.response = {}
         self.context = {}
         self.actions = {
+            'populate_area_tables': self.populate_area_tables,
             'import_data': self.import_data,
             'clear_db': self.clear_db,
         }

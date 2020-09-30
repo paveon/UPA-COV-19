@@ -4,7 +4,7 @@ import requests.exceptions as exceptions
 
 URL_COVID_CONFIRMED_CASES = 'https://onemocneni-aktualne.mzcr.cz/api/v2/covid-19/osoby.json'
 URL_COVID_DEATHS = 'https://onemocneni-aktualne.mzcr.cz/api/v2/covid-19/umrti.json'
-
+URL_COVID_TESTS = 'https://onemocneni-aktualne.mzcr.cz/api/v2/covid-19/testy.json'
 
 def download_file(url, output_path=None):
     data = requests.get(url, timeout=10)
@@ -46,6 +46,9 @@ if __name__ == '__main__':
     all_deaths = deaths_report['data']
     print(f"Total deaths: {len(all_deaths)}")
 
+    tests_report = download(url=URL_COVID_TESTS).json()
+    daily_tests = tests_report['data']
+
     db_client = pymongo.MongoClient("mongodb://localhost:27017/")
     print(f"Existing DBs: {db_client.list_database_names()}")
 
@@ -57,3 +60,6 @@ if __name__ == '__main__':
 
     deaths_collection = db['daily_deaths']
     records = deaths_collection.insert_many(all_deaths)
+
+    tests_collection = db['daily_tests']
+    tests_collection.insert_many(daily_tests)
