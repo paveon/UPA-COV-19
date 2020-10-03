@@ -4,6 +4,7 @@ from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.template import loader
 from django.urls import reverse
 from django.apps import AppConfig, apps
+from django.db.models import F
 from django.utils.decorators import method_decorator
 from django.views import generic, View
 from django.core import serializers
@@ -18,7 +19,7 @@ class IndexView(generic.TemplateView):
     template_name = 'covid_app/index.html'
 
     def clear_db(self):
-        Deceased.objects.all().delete()
+        CovidDeath.objects.all().delete()
         ConfirmedCase.objects.all().delete()
         PerformedTests.objects.all().delete()
         # return render(request, 'covid_app/index.html')
@@ -88,6 +89,18 @@ class IndexView(generic.TemplateView):
             # 'cumulative_test_count': 'kumulativni_pocet_testu'
         }
 
+        weekly_deaths_mapping = {
+            'year': 'rok',
+            'week_number': 'tyden',
+            'date_start': 'casref_od',
+            'date_end': 'casref_do',
+            'death_count_1': '0-14',
+            'death_count_2': '15-39',
+            'death_count_3': '40-64',
+            'death_count_4': '65-84',
+            'death_count_5': '85+',
+        }
+
         def apply_mapping(mapping, document):
             object_dict = {}
             for key, value in mapping.items():
@@ -109,9 +122,10 @@ class IndexView(generic.TemplateView):
         db_client = pymongo.MongoClient("mongodb://localhost:27017/")
         print(f"Existing DBs: {db_client.list_database_names()}")
         covid_db = db_client['covid_data']
-        import_collection('daily_deaths', Deceased, deaths_mapping)
+        import_collection('daily_deaths', CovidDeath, deaths_mapping)
         # import_collection('confirmed_cases', ConfirmedCase, case_mapping)
         import_collection('daily_tests', PerformedTests, test_mapping)
+        import_collection('weekly_deaths', WeeklyDeaths, weekly_deaths_mapping)
         print(f"Total tests: {PerformedTests.objects.cumulative_test_count()}")
         print("Import finished")
 
@@ -128,12 +142,27 @@ class IndexView(generic.TemplateView):
 
     def get_context_data(self, **kwargs):
         self.context = super().get_context_data(**kwargs)
-        deceased_query_set = Deceased.objects.order_by('date_of_death')
-        age_data = list(deceased_query_set.values_list('age', flat=True))
-        json_data = serializers.serialize('json', deceased_query_set)
-        self.context['deceased_list'] = deceased_query_set[:10]
-        self.context['deceased_data'] = json_data
+
+        expr = F('death_count_1') + F('death_count_2') + F('death_count_3') + F('death_count_4') + F('death_count_5')
+        week_numbers = WeeklyDeaths.objects.values('week_number')
+        annotated = week_numbers.annotate(death_sums=expr)
+        weekly_deaths = annotated.values('week_number', 'death_sums')
+        grouped = {}
+        for week_data in weekly_deaths:
+            week_number = week_data['week_number']
+            if week_number in grouped:
+                grouped[week_number].append(week_data['death_sums'])
+            else:
+                grouped[week_number] = [week_data['death_sums']]
+        self.context['weekly_deaths'] = json.dumps(grouped)
+
+        age_data = list(CovidDeath.objects.all().values_list('age', flat=True))
+        # age_data = list(deceased_query_set.values_list('age', flat=True))
+        # json_data = serializers.serialize('json', deceased_query_set)
+        # self.context['deceased_list'] = deceased_query_set[:10]
+        # self.context['deceased_data'] = json_data
         self.context['age_data'] = json.dumps(age_data)
+
         return self.context
 
     # def get(self, request, *args, **kwargs):

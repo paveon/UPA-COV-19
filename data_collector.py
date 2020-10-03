@@ -50,43 +50,50 @@ def in_date_range(date_str, begin, end):
 
 
 def process_mzcr_dataset(begin_date, source_response):
-        dataset_json = source_response.json()
-        end_date = datetime.strptime(dataset_json['modified'][:10], '%Y-%m-%d').date()
-        if end_date == datetime.today().date():
-            # Ignore data from this day as it is continuously updated and we would
-            # have no way to identify new data when updating our own database because
-            # there are no IDs
-            end_date = end_date - timedelta(days=1)
+    dataset_json = source_response.json()
+    end_date = datetime.strptime(dataset_json['modified'][:10], '%Y-%m-%d').date()
+    if end_date == datetime.today().date():
+        # Ignore data from this day as it is continuously updated and we would
+        # have no way to identify new data when updating our own database because
+        # there are no IDs
+        end_date = end_date - timedelta(days=1)
 
-        end_date_str = end_date.strftime('%Y-%m-%d')
-        if begin_date != end_date:
-            return [x for x in dataset_json['data'] if in_date_range(x['datum'], begin_date, end_date)], end_date_str
-        else:
-            return [], end_date_str
+    end_date_str = end_date.strftime('%Y-%m-%d')
+    if begin_date != end_date:
+        return [x for x in dataset_json['data'] if in_date_range(x['datum'], begin_date, end_date)], end_date_str
+    else:
+        return [], end_date_str
 
 
 def process_csu_dataset(begin_date, source_response):
-        weekly_deaths_csv = source_response.content.decode('utf-8').splitlines(keepends=False)
-        selected_columns_indices = [1, 7, 8, 10, 11, 12]
-        header = weekly_deaths_csv[0]
-        selected_column_names = [header.split(',')[i].strip('\"') for i in selected_columns_indices]
-        dataset_csv = weekly_deaths_csv[1:]
+    weekly_deaths_csv = source_response.content.decode('utf-8').splitlines(keepends=False)
+    selected_columns_indices = [7, 8, 10, 11]
+    header = weekly_deaths_csv[0]
+    selected_column_names = [header.split(',')[i].strip('\"') for i in selected_columns_indices]
+    object_keys = selected_column_names + ['0-14', '15-39', '40-64', '65-84', '85+']
+    dataset_csv = weekly_deaths_csv[1:]
 
-        # Transforms a single CSV line into a dict for MongoDB
-        def process_line(line):
-            columns = line.split(',')
-            selected_columns = [columns[i].strip('\"') for i in selected_columns_indices]
-            return dict(zip(selected_column_names, selected_columns))
+    def chunker(seq, size):
+        for pos in range(0, len(seq), size):
+            yield seq[pos:pos + size]
 
-        dataset = [x for x in map(process_line, dataset_csv) if x['vek_txt'] != 'celkem']
-        filtered_dataset = [x for x in dataset if in_date_range(x['casref_od'], begin_date, None)]
-        return filtered_dataset, dataset[-1]['casref_do']
+    def process_chunk(line_chunk):
+        sum_line = line_chunk[-1]
+        sum_line_columns = sum_line.split(',')
+        date_info = [sum_line_columns[i].strip('\"') for i in selected_columns_indices]
+        death_counts = [line.split(',')[1].strip('\"') for line in line_chunk[:-1]]
+        record = dict(zip(object_keys, date_info + death_counts))
+        return record
+
+    dataset = map(process_chunk, chunker(dataset_csv, 6))
+    filtered_dataset = [x for x in dataset if in_date_range(x['casref_od'], begin_date, None)]
+    return filtered_dataset, filtered_dataset[-1]['casref_do']
 
 
 if __name__ == '__main__':
     db_client = pymongo.MongoClient("mongodb://localhost:27017/")
     print(f"Existing DBs: {db_client.list_database_names()}")
-    # db_client.drop_database('covid_data')
+    db_client.drop_database('covid_data')
     db = db_client['covid_data']
     names = db.list_collection_names()
 
@@ -110,5 +117,5 @@ if __name__ == '__main__':
             collection.insert_many(collection_data)
 
         collection_metadata = db[collection_name + '.metadata']
-        print(list(collection_metadata.find()))
+        # print(list(collection_metadata.find()))
         collection_metadata.find_one_and_replace({}, {'modified': end_date_str}, upsert=True)

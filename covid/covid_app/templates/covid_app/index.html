@@ -328,19 +328,43 @@
             // const deceased_data = JSON.parse("{{deceased_data|escapejs}}");
             // console.log(deceased_data);
 
-            {% if deceased_list %}
-                const data = [
-                    {
+            {% if age_data %}
+                const trace = {
                         y: JSON.parse("{{age_data|escapejs}}"),
                         boxpoints: 'all',
                         jitter: 0.3,
                         pointpos: -1.8,
                         type: 'box',
                         name: 'Age at death'
-                    }
-                ];
+                }
+                layout = {
+                    title: 'Age at death of COV-19 positive patients',
+                    paper_bgcolor: 'rgb(243, 243, 243)',
+                    plot_bgcolor: 'rgb(243, 243, 243)',
+                    showlegend: false
+                };
 
-                Plotly.newPlot('box-graph-div', data);
+                Plotly.newPlot('box-graph-div', [trace], layout);
+            {% endif %}
+
+            {% if weekly_deaths %}
+                weekly_deaths_data = JSON.parse("{{weekly_deaths|escapejs}}")
+                let traces = []
+                for (let i = 0; i < 52; i ++) {
+                    traces.push({
+                        y: weekly_deaths_data[i + 1],
+                        type: 'box',
+                        name: `Week ${i + 1}`
+                    })
+                }
+                layout = {
+                    title: 'Weekly deaths data summarization from 2011 to present',
+                    paper_bgcolor: 'rgb(243, 243, 243)',
+                    plot_bgcolor: 'rgb(243, 243, 243)',
+                    showlegend: false
+                };
+
+                Plotly.newPlot('weekly_deaths_graph', traces, layout);
             {% endif %}
         });
 
@@ -351,7 +375,8 @@
     <!-- Middle Column -->
     <div style="flex: 2 1 0">
         <div class="" style="width: 900px; margin: auto; border: 2px solid black">
-            <button onclick="populateAreaTables()" type="button" id="area-tables-button" class="w3-button w3-block w3-teal">
+            <button onclick="populateAreaTables()" type="button" id="area-tables-button"
+                    class="w3-button w3-block w3-teal">
                 <b>Populate area tables</b>
             </button>
             <button onclick="importData()" type="button" id="data-import-button" class="w3-button w3-block w3-teal">
@@ -361,8 +386,9 @@
                 <b>Clear database</b>
             </button>
 
-            {% if deceased_list %}
-                <div id="deceased_table" class="w3-container w3-section">
+
+            <div id="deceased_table" class="w3-container w3-section">
+                {% if deceased_list %}
                     <h3>Deceased</h3>
                     <div class="w3-card w3-round" style="overflow-y:auto; max-height: 325px">
 
@@ -391,14 +417,21 @@
                             </tbody>
                         </table>
                     </div>
+                {% endif %}
 
-                    <h3>Graphs</h3>
-                    <div class="w3-card w3-round" style="width: 50%" id="box-graph-div"></div>
+                <h2>Graphs</h2>
+                {% if age_data %}
+                    <div class="w3-card w3-round" style="width: 100%" id="box-graph-div">
+                    </div>
                     <!--        <div id="graphs" class="w3-container w3-section">-->
                     <!--        </div>-->
+                {% endif %}
 
-                </div>
-            {% endif %}
+                {% if weekly_deaths %}
+                    <div class="w3-card w3-round" style="width: 100%" id="weekly_deaths_graph">
+                    </div>
+                {% endif %}
+            </div>
         </div>
         <!-- End Middle Column -->
     </div>
