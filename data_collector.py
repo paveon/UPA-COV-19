@@ -1,42 +1,11 @@
 import pymongo
-import requests
-import requests.exceptions as exceptions
 from datetime import *
+from covid.covid_app.download_utils import download
 
 URL_COVID_CONFIRMED_CASES = 'https://onemocneni-aktualne.mzcr.cz/api/v2/covid-19/osoby.json'
 URL_COVID_DEATHS = 'https://onemocneni-aktualne.mzcr.cz/api/v2/covid-19/umrti.json'
 URL_COVID_TESTS = 'https://onemocneni-aktualne.mzcr.cz/api/v2/covid-19/testy.json'
 URL_WEEKLY_DEATHS = 'https://www.czso.cz/documents/62353418/138258837/130185-20data092920.csv'
-
-
-def download_file(url, output_path=None):
-    data = requests.get(url, timeout=10)
-    data.raise_for_status()
-    if data.status_code != 200:
-        raise exceptions.ConnectionError()
-
-    # This check doesn't work if the message body uses compression
-    # headers = data.headers
-    # content_length = headers.get('content-length')
-    # if content_length is not None:
-    #     content_length = int(content_length)
-    #     if content_length != len(data.content):
-    #         raise exceptions.ConnectionError()
-
-    if output_path is None:
-        return data
-    else:
-        with open(output_path, 'wb') as output_file:
-            output_file.write(data.content)
-
-
-def download(url, output_path=None):
-    try:
-        return download_file(url, output_path)
-    except (exceptions.ConnectionError, exceptions.Timeout) as err:
-        print(f"[Download exception] {str(err)}")
-        print(f"Retrying url '{url}'...")
-        return download_file(url, output_path)
 
 
 def in_date_range(date_str, begin, end):
@@ -93,7 +62,7 @@ def process_csu_dataset(begin_date, source_response):
 if __name__ == '__main__':
     db_client = pymongo.MongoClient("mongodb://localhost:27017/")
     print(f"Existing DBs: {db_client.list_database_names()}")
-    db_client.drop_database('covid_data')
+    # db_client.drop_database('covid_data')
     db = db_client['covid_data']
     names = db.list_collection_names()
 

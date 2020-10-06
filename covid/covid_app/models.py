@@ -2,6 +2,7 @@ from django.utils.translation import gettext_lazy as _
 from django.db import models
 from django.db.models import Sum
 from datetime import *
+from django.core.exceptions import *
 
 
 class NUTS_BASE(models.Model):
@@ -114,3 +115,21 @@ class PerformedTests(models.Model):
 
     def __str__(self):
         return f"[{self.date}] Test count: {self.test_count}"
+
+
+class CovidOverview(models.Model):
+    date = models.DateField()
+    confirmed_cases = models.PositiveIntegerField('The total number of confirmed cases')
+    confirmed_cases_yesterday = models.PositiveIntegerField('Number of confirmed cases in the previous day')
+    confirmed_cases_today = models.PositiveIntegerField('Number of confirmed cases for today')
+    active_cases = models.PositiveIntegerField('The total number of active cases')
+    total_recovered = models.PositiveIntegerField('The total number of recovered patients')
+    total_deaths = models.PositiveIntegerField('The total number of deaths of COVID-19 positive patients')
+    hospitalized_count = models.PositiveIntegerField('The total number of hospitalized patients')
+    performed_tests = models.PositiveIntegerField('The total number of performed tests')
+    performed_tests_yesterday = models.PositiveIntegerField('Number of tests performed in the previous day')
+
+    def save(self, *args, **kwargs):
+        if not self.pk and CovidOverview.objects.exists():
+            raise ValidationError('There is can be only one CovidOverview instance')
+        return super().save(*args, **kwargs)

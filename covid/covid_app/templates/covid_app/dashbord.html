@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    {% load static %}
+    {% load humanize %}
+
+    <script src="{% static 'covid_app/js/jquery-3.3.1.min.js' %}"></script>
+    <link rel="stylesheet" href="{% static 'covid_app/css/w3.css' %}">
+    <link rel="stylesheet" href="{% static 'covid_app/css/style.css' %}">
+
+    <link rel="stylesheet" href="https://www.w3schools.com/lib/w3-theme-blue-grey.css">
+    <link rel='stylesheet' href='https://fonts.googleapis.com/css?family=Open+Sans'>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Quicksand:500">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.5.0/css/all.css"
+          integrity="sha384-B4dIYHKNBt8Bc12p+WXckhzcICo0wtJAoU8YZTY5qE0Id1GSseTk6S+L3BlXeVIU" crossorigin="anonymous">
+
+    <link rel="stylesheet" href="//code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
+    <script src='https://cdn.plot.ly/plotly-latest.min.js'></script>
+
+    <title>Dashboard</title>
+
+    <script>
+        $(document).ready(function () {
+            {#let overview_data = JSON.parse("{{overview_data|escapejs}}");#}
+            {#console.log(overview_data);#}
+            console.log({{ overview_data|safe }});
+        });
+
+    </script>
+</head>
+
+<body style="background-color: #F7F8FC;">
+
+<div class="w3-top header2">
+    <div class="w3-bar w3-large header-content">
+        <a class="w3-bar-item w3-hide-medium w3-hide-large w3-right w3-padding-large w3-hover-white w3-large"
+           href="javascript:void(0);" onclick="openNav()"><i class="fa fa-bars"></i></a>
+
+        {#        <a href="{% url 'covid_app:index' %}" class="w3-bar-item"#}
+        {#           title="Homepage">#}
+        {#            #}
+        {#            <i class="covid-icon w3-margin-right"></i>#}
+        {#        </a>#}
+        <div class="title-div">
+            <img class="covid-icon" src="{% static 'covid_app/images/covid-icon.png' %}">
+            <a href="{% url 'covid_app:index' %}" class="logo-text">COVID-19</a>
+        </div>
+
+        <a href="{% url 'covid_app:index' %}"
+           class="w3-bar-item w3-button w3-hide-small w3-right header-button" title="Dashboard">Dashboard
+        </a>
+        <a href="{% url 'covid_app:index' %}"
+           class="w3-bar-item w3-button w3-hide-small w3-right header-button" title="Statistics">Statistics
+        </a>
+        <a href="{% url 'covid_app:index' %}"
+           class="w3-bar-item w3-button w3-hide-small w3-right header-button" title="TODO">TODO
+        </a>
+    </div>
+</div>
+
+<!-- Navbar on small screens -->
+<div id="navDemo" class="w3-bar-block w3-theme-d2 w3-hide w3-hide-large w3-hide-medium w3-large">
+    <a href="#" class="w3-bar-item w3-button w3-padding-large">Link 1</a>
+    <a href="#" class="w3-bar-item w3-button w3-padding-large">Link 2</a>
+    <a href="#" class="w3-bar-item w3-button w3-padding-large">Link 3</a>
+    <a href="#" class="w3-bar-item w3-button w3-padding-large">My Profile</a>
+</div>
+
+<div class="tile-wrapper">
+    <div class="tile-container">
+        <div class="tile third" style="display: flex">
+            <div style="flex: 0 0 25%;" class="w3-margin-right">
+                <img src="{% static 'covid_app/images/covid-icon-2.svg' %}"
+                     style="width: 100%; max-width: 50px; position: relative; top: 50%; transform: translateY(-50%)">
+            </div>
+            <div style="flex: 1;">
+                <div>
+                    <h4 class="tile-title" style="height: 35px">Confirmed Cases</h4>
+                    <h3 class="tile-value" style="height: 50px">{{ overview_data.confirmed_cases|intcomma }}</h3>
+                    <h5 class="tile-title">(+{{ overview_data.confirmed_cases_today|intcomma }})</h5>
+                </div>
+            </div>
+        </div>
+
+        <div class="tile third" style="display: flex">
+            <div style="flex: 0 0 25%;" class="w3-margin-right">
+                <img src="{% static 'covid_app/images/covid-icon-2.svg' %}"
+                     style="width: 100%; max-width: 50px; position: relative; top: 50%; transform: translateY(-50%)">
+            </div>
+            <div style="flex: 1;">
+                <div>
+                    <h4 class="tile-title" style="height: 35px">Active Cases</h4>
+                    <h3 class="tile-value" style="height: 50px">{{ overview_data.active_cases|intcomma }}</h3>
+                    <h5 class="tile-title">(+ TODO)</h5>
+                </div>
+            </div>
+        </div>
+
+        <div class="tile third" style="display: flex">
+            <div style="flex: 0 0 25%;" class="w3-margin-right">
+                <img src="{% static 'covid_app/images/covid-icon-2.svg' %}"
+                     style="width: 100%; max-width: 50px; position: relative; top: 50%; transform: translateY(-50%)">
+            </div>
+            <div style="flex: 1;">
+                <div>
+                    <h4 class="tile-title" style="height: 35px">Total Recovered</h4>
+                    <h3 class="tile-value" style="height: 50px">{{ overview_data.total_recovered|intcomma }}</h3>
+                    <h5 class="tile-title">(+ TODO)</h5>
+                </div>
+            </div>
+        </div>
+
+        <div class="tile third" style="display: flex">
+            <div style="flex: 0 0 25%;" class="w3-margin-right">
+                <img src="{% static 'covid_app/images/covid-icon-2.svg' %}"
+                     style="width: 100%; max-width: 50px; position: relative; top: 50%; transform: translateY(-50%)">
+            </div>
+            <div style="flex: 1;">
+                <div>
+                    <h4 class="tile-title" style="height: 35px">Total Deaths</h4>
+                    <h3 class="tile-value" style="height: 50px">{{ overview_data.total_deaths|intcomma }}</h3>
+                    <h5 class="tile-title">(+ TODO)</h5>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="tile third" style="display: flex">
+            <div style="flex: 0 0 25%;" class="w3-margin-right">
+                <img src="{% static 'covid_app/images/covid-icon-2.svg' %}"
+                     style="width: 100%; max-width: 50px; position: relative; top: 50%; transform: translateY(-50%)">
+            </div>
+            <div style="flex: 1;">
+                <div>
+                    <h4 class="tile-title" style="height: 35px">Hospitalized</h4>
+                    <h3 class="tile-value" style="height: 50px">{{ overview_data.hospitalized_count|intcomma }}</h3>
+                    {#                    <h5 class="tile-title">(+ TODO)</h5>#}
+                </div>
+            </div>
+        </div>
+
+
+        <div class="tile third" style="display: flex">
+            <div style="flex: 0 0 25%;" class="w3-margin-right">
+                <img src="{% static 'covid_app/images/covid-icon-2.svg' %}"
+                     style="width: 100%; max-width: 50px; position: relative; top: 50%; transform: translateY(-50%)">
+            </div>
+            <div style="flex: 1;">
+                <div>
+                    <h4 class="tile-title" style="height: 35px">Performed Tests</h4>
+                    <h3 class="tile-value" style="height: 50px">{{ overview_data.performed_tests|intcomma }}</h3>
+                    <h5 class="tile-title">(+{{ overview_data.performed_tests_yesterday|intcomma }})</h5>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="tile sixth">1/6</div>
+        <div class="tile sixth">1/6</div>
+        <div class="tile third">1/3</div>
+        <div class="tile sixth">1/6</div>
+        <div class="tile sixth">1/6</div>
+    </div>
+</div>
+</body>
+</html>

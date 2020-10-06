@@ -217,9 +217,133 @@ article p {
 }
 
 input:required {
-  border: 1px solid red !important;
+    border: 1px solid red !important;
 }
 
 select:required {
-  border: 1px solid red !important;
+    border: 1px solid red !important;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+.tile-wrapper {
+    display: block;
+    position: relative;
+    width: 90%;
+    max-width: 1200px;
+    margin: 0 auto;
+    overflow: hidden;
+}
+
+.tile-container {
+    display: flex;
+    position: relative;
+    width: calc(100% + 30px);
+    flex-wrap: wrap;
+    padding: 10px;
+}
+
+.tile {
+    display: inline-block;
+    margin-right: 30px;
+    margin-bottom: 30px;
+    min-height: 130px;
+    text-align: left;
+    position: relative;
+    /*border: 1px solid gray;*/
+    border-radius:4px;
+    background-color: white;
+    box-shadow: 0 0 5px 0 rgba(0, 0, 0, 0.2);
+    padding: 15px;
+    transition: all 0.3s cubic-bezier(0.165, 0.84, 0.44, 1);
+}
+
+.tile:hover {
+    box-shadow: 0 0 8px 0 rgba(0, 0, 0, 0.4);
+    /*transform: scale(1.01, 1.01);*/
+    /*cursor: pointer;*/
+}
+
+.tile-title {
+    font-family: 'Quicksand', sans-serif;
+    font-size: 1.5vw;
+    color: gray;
+    margin: 0;
+}
+.tile-value {
+    font-family: 'Quicksand', sans-serif;
+    font-weight: bold;
+    /*font-size: 30px;*/
+    font-size: 2.5vw;
+    margin: 0;
+}
+
+.two-thirds {
+    flex: 0 0 calc(66.66% - 30px);
+}
+
+.third {
+    flex: 0 0 calc(33.33% - 30px);
+}
+
+.sixth {
+    flex: 0 0 calc(16.66% - 30px);
+}
+
+.header2 {
+    background-color: white;
+    box-shadow: 0 0 5px 0 rgba(0, 0, 0, 0.2);
+    height: 60px;
+}
+
+.title-div {
+    display: inline-block;
+    height: 60px;
+}
+
+.covid-icon {
+    -webkit-font-smoothing: antialiased;
+    display: inline-block;
+    font-style: normal;
+    font-variant: normal;
+    text-rendering: auto;
+    vertical-align: middle;
+    height: 60px;
+    padding: 5px 0;
+    margin-right: 8px;
+}
+
+.logo-text {
+    font-family: 'Quicksand', sans-serif;
+    font-size: 26px;
+    font-weight: bold;
+    text-decoration: none;
+    text-align: center;
+    vertical-align: middle;
+    display: inline-block;
+    color: #5ACAB0;
+    height: 60px;
+    line-height: 60px;
+}
+
+.logo-text:hover {
+    text-shadow: 1px 1px 2px rgba(200, 50, 30, 1);
+}
+
+.header-content {
+    width: 90%;
+    max-width: 1200px;
+    /*position: relative;*/
+    margin: 0 auto;
+    overflow: hidden;
+    padding-left: 10px;
+    padding-right: 10px;
+}
+
+.header-button {
+    height: 60px;
+    vertical-align: middle;
+    line-height: 46px;
 }

@@ -6,8 +6,9 @@ from . import views
 app_name = "covid_app"
 
 urlpatterns = [
-    path('', RedirectView.as_view(pattern_name='covid_app:index', permanent=False)),
+    path('', RedirectView.as_view(pattern_name='covid_app:dashboard', permanent=False)),
     path('index/', views.IndexView.as_view(), name='index'),
+    path('dashboard/', views.DashboardView.as_view(), name='dashboard'),
 
     # path('clear_db/', views.clear_db, name='clear_db'),
 

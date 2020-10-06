@@ -327,15 +327,18 @@
 
             // const deceased_data = JSON.parse("{{deceased_data|escapejs}}");
             // console.log(deceased_data);
+            let trace = null;
+            let traces = [];
+            let layout = null;
 
             {% if age_data %}
-                const trace = {
-                        y: JSON.parse("{{age_data|escapejs}}"),
-                        boxpoints: 'all',
-                        jitter: 0.3,
-                        pointpos: -1.8,
-                        type: 'box',
-                        name: 'Age at death'
+                trace = {
+                    y: JSON.parse("{{age_data|escapejs}}"),
+                    boxpoints: 'all',
+                    jitter: 0.3,
+                    pointpos: -1.8,
+                    type: 'box',
+                    name: 'Age at death'
                 }
                 layout = {
                     title: 'Age at death of COV-19 positive patients',
@@ -348,9 +351,9 @@
             {% endif %}
 
             {% if weekly_deaths %}
-                weekly_deaths_data = JSON.parse("{{weekly_deaths|escapejs}}")
-                let traces = []
-                for (let i = 0; i < 52; i ++) {
+                let weekly_deaths_data = JSON.parse("{{weekly_deaths|escapejs}}")
+                traces = []
+                for (let i = 0; i < 52; i++) {
                     traces.push({
                         y: weekly_deaths_data[i + 1],
                         type: 'box',
@@ -365,6 +368,22 @@
                 };
 
                 Plotly.newPlot('weekly_deaths_graph', traces, layout);
+            {% endif %}
+
+            {% if area_cases %}
+                let region_cases_data = JSON.parse("{{area_cases|escapejs}}")
+                trace = {
+                    x: Object.keys(region_cases_data),
+                    y: Object.values(region_cases_data),
+                    type: 'bar',
+                    name: 'Region case counts'
+                }
+                layout = {
+                    title: 'Region counts of KHS confirmed COV-19 cases',
+                    paper_bgcolor: 'rgb(243, 243, 243)',
+                    plot_bgcolor: 'rgb(243, 243, 243)',
+                };
+                Plotly.newPlot('area_cases_graph', [trace], layout);
             {% endif %}
         });
 
@@ -420,11 +439,14 @@
                 {% endif %}
 
                 <h2>Graphs</h2>
+                {% if area_cases %}
+                    <div class="w3-card w3-round" style="width: 100%" id="area_cases_graph">
+                    </div>
+                {% endif %}
+
                 {% if age_data %}
                     <div class="w3-card w3-round" style="width: 100%" id="box-graph-div">
                     </div>
-                    <!--        <div id="graphs" class="w3-container w3-section">-->
-                    <!--        </div>-->
                 {% endif %}
 
                 {% if weekly_deaths %}
