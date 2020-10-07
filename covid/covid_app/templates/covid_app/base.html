@@ -28,54 +28,32 @@
 <body class="w3-theme-l5">
 <a name="top"></a>
 <!-- Navbar -->
-<div class="w3-top header">
-    <div class="w3-bar w3-theme-d2 w3-left-align w3-large">
-        <a class="w3-bar-item w3-button w3-hide-medium w3-hide-large w3-right w3-padding-large w3-hover-white w3-large w3-theme-d2"
+<body style="background-color: #F7F8FC;">
+
+<div class="w3-top header2">
+    <div class="w3-bar w3-large header-content">
+        <a class="w3-bar-item w3-hide-medium w3-hide-large w3-right w3-padding-large w3-hover-white w3-large"
            href="javascript:void(0);" onclick="openNav()"><i class="fa fa-bars"></i></a>
 
-        <a href="{% url 'covid_app:index' %}" class="w3-bar-item w3-button w3-padding-large w3-theme-d4 logoText"
-           title="Homepage">
-            <i class="fa fa-home w3-margin-right"></i>#APP_NAME
-        </a>
+        {#        <a href="{% url 'covid_app:index' %}" class="w3-bar-item"#}
+        {#           title="Homepage">#}
+        {#            #}
+        {#            <i class="covid-icon w3-margin-right"></i>#}
+        {#        </a>#}
+        <div class="title-div">
+            <img class="covid-icon" src="{% static 'covid_app/images/covid-icon.png' %}">
+            <a href="{% url 'covid_app:dashboard' %}" class="logo-text">COVID-19</a>
+        </div>
 
+        <a href="{% url 'covid_app:dashboard' %}"
+           class="w3-bar-item w3-button w3-hide-small w3-right header-button" title="Dashboard">Dashboard
+        </a>
         <a href="{% url 'covid_app:index' %}"
-           class="w3-bar-item w3-button w3-hide-small w3-padding-large w3-hover-white"
-           title="Games">
-            <i class="fa fa-gamepad"></i>
+           class="w3-bar-item w3-button w3-hide-small w3-right header-button" title="Statistics">Statistics
         </a>
-
         <a href="{% url 'covid_app:index' %}"
-           class="w3-bar-item w3-button w3-hide-small w3-padding-large w3-hover-white"
-           title="Social">
-            <i class="fa fa-user"></i>
+           class="w3-bar-item w3-button w3-hide-small w3-right header-button" title="TODO">TODO
         </a>
-
-        <a href="{% url 'covid_app:index' %}"
-           class="w3-bar-item w3-button w3-hide-small w3-padding-large w3-hover-white"
-           title="Tournaments">
-            <i class="fa fa-trophy"></i>
-        </a>
-
-        {% if user.is_superuser or user.is_staff %}
-            <a href="{% url 'covid_app:index' %}"
-               class="w3-bar-item w3-button w3-hide-small w3-padding-large w3-hover-white" title="Management">
-                <i class="fa fa-cog"></i>
-            </a>
-        {% endif %}
-
-        {% if user.is_authenticated %}
-            <a href="{% url 'covid_app:index' %}"
-               class="w3-bar-item w3-button w3-hide-small w3-right w3-padding-large w3-hover-white"
-               title="My Account">
-                Logout <i class="fas fa-sign-out-alt w3-margin-left"></i>
-            </a>
-        {% else %}
-            <a href="{% url 'covid_app:index' %}"
-               class="w3-bar-item w3-button w3-hide-small w3-right w3-padding-large w3-hover-white"
-               title="Annonymous user">Log in
-                <i class="fa fa-user-secret w3-margin-left"></i>
-            </a>
-        {% endif %}
     </div>
 </div>
 
@@ -211,15 +189,9 @@
 {% block endpage %}
 {% endblock %}
 <!-- Footer -->
-<footer class="w3-container w3-theme-d3 w3-padding">
-    <h4 class="logoText">#APP_NAME</h4>
-</footer>
 
-<footer class="w3-padding w3-container w3-theme-d5" style="position: relative;">
-    <span>© #DATE FIT</span>
-    <span style="float: right;">#Authors</span>
-    <a href="#top"><i class="fas fa-arrow-up w3-display-middle"></i></a>
-</footer>
+
+
 
 
 </body>
