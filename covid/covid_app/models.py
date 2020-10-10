@@ -51,19 +51,35 @@ class ConfirmedCase(models.Model):
         return f"[Case: {self.report_date}] {self.gender} - {self.age}"
 
 
+class RecoveredPerson(models.Model):
+    date = models.DateField()
+    age = models.PositiveSmallIntegerField('Age at the time of recovery')
+    gender = models.CharField(max_length=1)
+    nuts_4_area = models.ForeignKey(NUTS_4_AREA, on_delete=models.CASCADE)
+
+    def __str__(self):
+        return f"[Recovered: {self.date}] {self.gender} - {self.age}"
+
+
+class CovidDeathManager(models.Manager):
+    def death_count(self, date_of_death):
+        return self.filter(date_of_death=date_of_death).count()
+
+
 class CovidDeath(models.Model):
     date_of_death = models.DateField()
     age = models.PositiveSmallIntegerField('Person\'s age at death')
     gender = models.CharField(max_length=1)
-    # nuts_3_area = models.ForeignKey(NUTS_3_AREA, on_delete=models.CASCADE)
     nuts_4_area = models.ForeignKey(NUTS_4_AREA, on_delete=models.CASCADE)
+
+    objects = CovidDeathManager()
 
     @property
     def week_number(self):
         return self.date_of_death.isocalendar()
 
     def __str__(self):
-        return f"[CovidDeath: {self.date_of_death}] {self.gender} - {self.age}"
+        return f"[COVID-19 Death: {self.date_of_death}] {self.gender} - {self.age}"
 
 
 class WeeklyDeaths(models.Model):
@@ -92,7 +108,7 @@ class WeeklyDeaths(models.Model):
         unique_together = ('year', 'week_number')
 
 
-class PerformedTestsManager(models.Manager):
+class DailyStatsManager(models.Manager):
     def cumulative_test_count(self, begin_date=None, end_date=None):
         if begin_date and end_date:
             if end_date < begin_date:
@@ -107,18 +123,37 @@ class PerformedTestsManager(models.Manager):
         total_tests = selected_objects.aggregate(Sum('test_count'))
         return total_tests['test_count__sum'] or 0
 
+    def recovered_count(self, at_date):
+        count = 0
+        try:
+            count = self.get(pk=at_date).recovered_cumulative
+            previous_day_count = self.get(pk=(at_date - timedelta(days=1))).recovered_cumulative
+            return count - previous_day_count
+        except DailyStatistics.DoesNotExist:
+            return count
 
-class PerformedTests(models.Model):
+    def death_count(self, at_date):
+        count = 0
+        try:
+            count = self.get(pk=at_date).deaths_cumulative
+            previous_day_count = self.get(pk=(at_date - timedelta(days=1))).deaths_cumulative
+            return count - previous_day_count
+        except DailyStatistics.DoesNotExist:
+            return count
+
+
+class DailyStatistics(models.Model):
     date = models.DateField(primary_key=True)
     test_count = models.PositiveIntegerField('Total number of performed tests at given day')
-    objects = PerformedTestsManager()
+    confirmed_case_count = models.PositiveIntegerField('Total number of confirmed cases at given day')
+    recovered_cumulative = models.PositiveIntegerField('Cumulative number of recovered patients')
+    deaths_cumulative = models.PositiveIntegerField('Cumulative number of deaths')
 
-    def __str__(self):
-        return f"[{self.date}] Test count: {self.test_count}"
+    objects = DailyStatsManager()
 
 
 class CovidOverview(models.Model):
-    date = models.DateField()
+    date = models.DateTimeField()
     confirmed_cases = models.PositiveIntegerField('The total number of confirmed cases')
     confirmed_cases_yesterday = models.PositiveIntegerField('Number of confirmed cases in the previous day')
     confirmed_cases_today = models.PositiveIntegerField('Number of confirmed cases for today')
@@ -131,5 +166,5 @@ class CovidOverview(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.pk and CovidOverview.objects.exists():
-            raise ValidationError('There is can be only one CovidOverview instance')
+            raise ValidationError('CovidOverview is a singleton model')
         return super().save(*args, **kwargs)

@@ -5,7 +5,7 @@ from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.template import loader
 from django.urls import reverse
 from django.apps import AppConfig, apps
-from django.db.models import F, Count
+from django.db.models import F, Q, Count
 from django.utils.decorators import method_decorator
 from django.views import generic, View
 from django.core import serializers
@@ -28,25 +28,29 @@ def apply_mapping(mapping, document):
     return object_dict
 
 
-def import_collection(covid_db, collection_name, model_cls, mapping):
+def import_collection(covid_db, collection_name, model_cls, mapping, begin_date=None, date_field_name=None):
     if collection_name not in covid_db.list_collection_names():
         return
     collection = covid_db[collection_name]
-    print(collection.estimated_document_count())
-    cursor = collection.find({})
+    if begin_date:
+        date_filter = {date_field_name: {'$gt': datetime.combine(begin_date, datetime.min.time())}}
+        cursor = collection.find(date_filter)
+    else:
+        cursor = collection.find({})
     objects = [model_cls(**apply_mapping(mapping, document)) for document in cursor]
     model_cls.objects.bulk_create(objects)
 
 
 @method_decorator(never_cache, name='dispatch')
-class IndexView(generic.TemplateView):
-    template_name = 'covid_app/index.html'
+class StatisticsView(generic.TemplateView):
+    template_name = 'covid_app/statistics.html'
 
     def clear_db(self):
         CovidDeath.objects.all().delete()
         ConfirmedCase.objects.all().delete()
-        PerformedTests.objects.all().delete()
+        RecoveredPerson.objects.all().delete()
         WeeklyDeaths.objects.all().delete()
+        DailyStatistics.objects.all().delete()
         # return render(request, 'covid_app/index.html')
         # return HttpResponseRedirect(reverse('covid_app:index'))
 
@@ -74,47 +78,35 @@ class IndexView(generic.TemplateView):
 
         create_areas(NUTS_0_AREAS, 0, None)
         print("Area tables populated")
-        # Region.objects.bulk_create([Region(pk=code, name=name) for code, name in NUTS_CODES_DICT.items()])
-        # County.objects.bulk_create([County(pk=code, name=name) for code, name in LAU_CODES_DICT.items()])
-        # Country.objects.bulk_create([Country(pk=code, name=name) for code, name in COUNTRY_CODES_DICT.items()])
 
-    def import_data(self):
-        if not NUTS_0_AREA.objects.exists() \
-                or not NUTS_1_AREA.objects.exists() \
-                or not NUTS_2_AREA.objects.exists() \
-                or not NUTS_3_AREA.objects.exists() \
-                or not NUTS_4_AREA.objects.exists():
-            self.populate_area_tables()
+    def cache_regions(self):
+        self.nuts_4_cache = {x.pk: x for x in NUTS_4_AREA.objects.all()}
+        self.nuts_0_cache = {x.pk: x for x in NUTS_0_AREA.objects.all()}
+        self.cz_cache = self.nuts_0_cache['CZ']
 
-        # nuts_3_cache = {x.pk: x for x in NUTS_3_AREA.objects.all()}
-        nuts_4_cache = {x.pk: x for x in NUTS_4_AREA.objects.all()}
-        nuts_0_cache = {x.pk: x for x in NUTS_0_AREA.objects.all()}
-        cz_cache = nuts_0_cache['CZ']
-
-        deaths_mapping = {
+        self.deaths_mapping = {
             'date_of_death': 'datum',
             'age': 'vek',
             'gender': 'pohlavi',
-            # 'nuts_3_area': {'name': 'kraj_nuts_kod', 'obj_cache': nuts_3_cache},
-            'nuts_4_area': {'name': 'okres_lau_kod', 'obj_cache': nuts_4_cache}
+            'nuts_4_area': {'name': 'okres_lau_kod', 'obj_cache': self.nuts_4_cache}
         }
 
-        case_mapping = {
+        self.case_mapping = {
             'report_date': 'datum',
             'age': 'vek',
             'gender': 'pohlavi',
-            # 'nuts_3_area': {'name': 'kraj_nuts_kod', 'obj_cache': nuts_3_cache},
-            'nuts_4_area': {'name': 'okres_lau_kod', 'obj_cache': nuts_4_cache},
-            'origin_country': {'name': 'nakaza_zeme_csu_kod', 'obj_cache': nuts_0_cache, 'default': cz_cache}
+            'nuts_4_area': {'name': 'okres_lau_kod', 'obj_cache': self.nuts_4_cache},
+            'origin_country': {'name': 'nakaza_zeme_csu_kod', 'obj_cache': self.nuts_0_cache, 'default': self.cz_cache}
         }
 
-        test_mapping = {
+        self.recovered_mapping = {
             'date': 'datum',
-            'test_count': 'prirustkovy_pocet_testu',
-            # 'cumulative_test_count': 'kumulativni_pocet_testu'
+            'age': 'vek',
+            'gender': 'pohlavi',
+            'nuts_4_area': {'name': 'okres_lau_kod', 'obj_cache': self.nuts_4_cache}
         }
 
-        weekly_deaths_mapping = {
+        self.weekly_deaths_mapping = {
             'year': 'rok',
             'week_number': 'tyden',
             'date_start': 'casref_od',
@@ -126,21 +118,50 @@ class IndexView(generic.TemplateView):
             'death_count_5': '85+',
         }
 
-        import_collection(self.db, 'daily_deaths', CovidDeath, deaths_mapping)
-        import_collection(self.db, 'confirmed_cases', ConfirmedCase, case_mapping)
-        import_collection(self.db, 'daily_tests', PerformedTests, test_mapping)
-        import_collection(self.db, 'weekly_deaths', WeeklyDeaths, weekly_deaths_mapping)
-        print(f"Total tests: {PerformedTests.objects.cumulative_test_count()}")
+        self.daily_stats_mapping = {
+            'date': 'datum',
+            'test_count': 'prirustkovy_pocet_testu',
+            'confirmed_case_count': 'prirustkovy_pocet_nakazenych',
+            'recovered_cumulative': 'kumulativni_pocet_vylecenych',
+            'deaths_cumulative': 'kumulativni_pocet_umrti'
+        }
+
+    def update_data(self):
+        self.cache_regions()
+        models_to_update = [
+            ['covid_deaths', CovidDeath, self.deaths_mapping, 'date_of_death', 'datum'],
+            ['rho_confirmed_cases', ConfirmedCase, self.case_mapping, 'report_date', 'datum'],
+            ['rho_recovered_persons', RecoveredPerson, self.recovered_mapping, 'date', 'datum'],
+            ['weekly_deaths', WeeklyDeaths, self.weekly_deaths_mapping, 'date_end', 'casref_od'],
+            ['daily_statistics', DailyStatistics, self.daily_stats_mapping, 'date', 'datum'],
+        ]
+
+        for arg_list in models_to_update:
+            model_cls = arg_list[1]
+            try:
+                arg_list[-2] = getattr(model_cls.objects.latest(arg_list[-2]), arg_list[-2])
+                import_collection(self.db, *arg_list)
+            except model_cls.DoesNotExist:
+                import_collection(self.db, *arg_list[:-2])
+
+    def import_data(self):
+        self.clear_db()
+
+        if not NUTS_0_AREA.objects.exists() \
+                or not NUTS_1_AREA.objects.exists() \
+                or not NUTS_2_AREA.objects.exists() \
+                or not NUTS_3_AREA.objects.exists() \
+                or not NUTS_4_AREA.objects.exists():
+            self.populate_area_tables()
+
+        self.cache_regions()
+
+        import_collection(self.db, 'covid_deaths', CovidDeath, self.deaths_mapping)
+        import_collection(self.db, 'rho_confirmed_cases', ConfirmedCase, self.case_mapping)
+        import_collection(self.db, 'rho_recovered_persons', RecoveredPerson, self.recovered_mapping)
+        import_collection(self.db, 'weekly_deaths', WeeklyDeaths, self.weekly_deaths_mapping)
+        import_collection(self.db, 'daily_statistics', DailyStatistics, self.daily_stats_mapping)
         print("Import finished")
-
-    def get_area_cases(self):
-        area_cases = {}
-        query = NUTS_3_AREA.objects.annotate(case_count=Count('nuts_4_area__confirmedcase')) \
-            .values('name', 'case_count')
-        for area in query:
-            area_cases[area['name']] = area['case_count']
-
-        return area_cases
 
     def __init__(self):
         super().__init__()
@@ -149,15 +170,40 @@ class IndexView(generic.TemplateView):
         self.action_key = None
         self.response = {}
         self.context = {}
+
+        self.nuts_4_cache = None
+        self.nuts_0_cache = None
+        self.cz_cache = None
+
+        self.deaths_mapping = None
+        self.case_mapping = None
+        self.weekly_deaths_mapping = None
+        self.daily_stats_mapping = None
+        self.recovered_mapping = None
+
         self.actions = {
             'populate_area_tables': self.populate_area_tables,
             'import_data': self.import_data,
+            'update_data': self.update_data,
             'clear_db': self.clear_db,
         }
         # print(f"Existing DBs: {db_client.list_database_names()}")
 
+    def get_area_cases(self):
+        area_cases = {}
+        q_object = ~Q(code='CZ999') & ~Q(code='CZZZZ')  # Ignore extra region and unknown region
+        query = NUTS_3_AREA.objects.filter(q_object).annotate(case_count=Count('nuts_4_area__confirmedcase')) \
+            .values('name', 'case_count')
+        for area in query:
+            area_cases[area['name']] = area['case_count']
+
+        return area_cases
+
     def get_context_data(self, **kwargs):
         self.context = super().get_context_data(**kwargs)
+
+        # count1 = DailyStatistics.objects.death_count(datetime.today() - timedelta(days=10))
+        # count2 = CovidDeath.objects.death_count(datetime.today() - timedelta(days=10))
 
         expr = F('death_count_1') + F('death_count_2') + F('death_count_3') + F('death_count_4') + F('death_count_5')
         week_numbers = WeeklyDeaths.objects.values('week_number')
@@ -212,7 +258,7 @@ class IndexView(generic.TemplateView):
 
 @method_decorator(never_cache, name='dispatch')
 class DashboardView(generic.TemplateView):
-    template_name = 'covid_app/dashbord.html'
+    template_name = 'covid_app/dashboard.html'
 
     def __init__(self):
         super().__init__()
@@ -229,7 +275,8 @@ class DashboardView(generic.TemplateView):
 
     def update_overview(self, overview=None):
         overview_json = download(url=URL_COVID_OVERVIEW).json()
-        # last_update = overview_json['modified']
+        overview_data = overview_json['data'][0]
+        overview_data['datum'] = overview_json['modified']
         overview_mapping = {
             'date': 'datum',
             'confirmed_cases': 'potvrzene_pripady_celkem',

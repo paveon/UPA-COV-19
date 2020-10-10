@@ -7,7 +7,7 @@ app_name = "covid_app"
 
 urlpatterns = [
     path('', RedirectView.as_view(pattern_name='covid_app:dashboard', permanent=False)),
-    path('index/', views.IndexView.as_view(), name='index'),
+    path('case_stats/', views.StatisticsView.as_view(), name='case_stats'),
     path('dashboard/', views.DashboardView.as_view(), name='dashboard'),
 
     # path('clear_db/', views.clear_db, name='clear_db'),

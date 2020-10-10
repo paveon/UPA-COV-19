@@ -1,0 +1,220 @@
+{% extends 'covid_app/base.html' %}
+{% block title %}COV-19 Stats{% endblock %}
+
+{% block scripts %}
+    <script>
+        function basePost(url, action) {
+            $.ajax({
+                type: 'POST',
+                url: url,
+                data: {
+                    csrfmiddlewaretoken: '{{ csrf_token }}',
+                    action: action
+                },
+                dataType: '',
+                async: true,
+                success: function (json) {
+                    location.reload();
+                },
+            });
+        }
+
+        function populateAreaTables() {
+            basePost("{% url 'covid_app:case_stats' %}", 'populate_area_tables')
+        }
+
+        function clearDb() {
+            basePost("{% url 'covid_app:case_stats' %}", 'clear_db')
+            // location.href="{% url 'covid_app:case_stats' %}";
+            // $.get("/covid_app/clear_db/", null);
+        }
+
+        function importData() {
+            basePost("{% url 'covid_app:case_stats' %}", 'import_data')
+        }
+
+        function updateData() {
+            basePost("{% url 'covid_app:case_stats' %}", 'update_data')
+        }
+
+        $(document).ready(function () {
+            let path = window.location.pathname;
+            let sectionID = sessionStorage.getItem(path + "selected_section");
+            if (sectionID) {
+                showSection(null, sectionID);
+            } else {
+                let tabs = $('.section-tab');
+                if (tabs.length > 0) {
+                    let firstTab = tabs.first();
+                    firstTab.addClass('w3-border-red');
+                    if (firstTab.attr('id').endsWith('_tab')) {
+                        let sectionID = firstTab.attr('id').slice(0, -4);
+                        let section = $('#' + sectionID);
+                        if (section) {
+                            section.show();
+                        }
+                    }
+                }
+            }
+
+            const resizeObserver = new ResizeObserver(entries => {
+                for (const entry of entries) {
+                    console.log(entry);
+                    console.log(entry.target.id);
+                    let update = {
+                        width: entry.contentRect.width,
+                        height: entry.contentRect.height
+                    };
+                    Plotly.relayout(entry.target.id, update);
+                }
+            });
+
+
+            // const deceased_data = JSON.parse("{{deceased_data|escapejs}}");
+            // console.log(deceased_data);
+            let trace = null;
+            let traces = [];
+            let layout = null;
+
+            {% if age_data %}
+                trace = {
+                    y: JSON.parse("{{age_data|escapejs}}"),
+                    boxpoints: 'all',
+                    type: 'box',
+                    name: 'Age at death'
+                }
+                layout = {
+                    title: 'Age of Dead Patients for COVID-19',
+                    paper_bgcolor: 'rgb(243, 243, 243)',
+                    plot_bgcolor: 'rgb(243, 243, 243)',
+                    showlegend: false,
+                    autosize: true
+                };
+
+                Plotly.newPlot('box-graph-div', [trace], layout, {responsive: true});
+                {#resizeObserver.observe($('#box-graph-div')[0]);#}
+            {% endif %}
+
+            {% if weekly_deaths %}
+                let weekly_deaths_data = JSON.parse("{{weekly_deaths|escapejs}}")
+                traces = []
+                for (let i = 0; i < 52; i++) {
+                    traces.push({
+                        y: weekly_deaths_data[i + 1],
+                        type: 'box',
+                        name: `Week ${i + 1}`
+                    })
+                }
+                layout = {
+                    title: 'Weekly deaths data summarization from 2011 to present',
+                    paper_bgcolor: 'rgb(243, 243, 243)',
+                    plot_bgcolor: 'rgb(243, 243, 243)',
+                    showlegend: false,
+                    autosize: true
+                };
+
+                Plotly.newPlot('weekly_deaths_graph', traces, layout, {responsive: true});
+                {#resizeObserver.observe($('#weekly_deaths_graph')[0]);#}
+            {% endif %}
+
+            {% if area_cases %}
+                let region_cases_data = JSON.parse("{{area_cases|escapejs}}")
+                trace = {
+                    x: Object.keys(region_cases_data),
+                    y: Object.values(region_cases_data),
+                    type: 'bar',
+                    name: 'Region case counts'
+                }
+                layout = {
+                    title: 'Region Counts of COVID-19 Cases Confirmed by Regional Hygiene Office',
+                    paper_bgcolor: 'rgb(243, 243, 243)',
+                    plot_bgcolor: 'rgb(243, 243, 243)',
+                    autosize: true
+                };
+                Plotly.newPlot('area_cases_graph', [trace], layout, {responsive: true});
+                {#resizeObserver.observe($('#area_cases_graph')[0]);#}
+            {% endif %}
+        });
+
+    </script>
+{% endblock scripts %}
+
+{% block content %}
+    <div id="import-buttons" class="w3-section">
+        <button onclick="populateAreaTables()" type="button" id="area-tables-button"
+                class="w3-button w3-block w3-gray w3-border-bottom">
+            <b>Populate Area Tables</b>
+        </button>
+        <button onclick="importData()" type="button" id="data-import-button"
+                class="w3-button w3-block w3-gray w3-border-bottom">
+            <b>Import Data</b>
+        </button>
+        <button onclick="updateData()" type="button" id="data-update-button" class="w3-button w3-block w3-gray w3-border-bottom">
+            <b>Update Data</b>
+        </button>
+        <button onclick="clearDb()" type="button" id="clear-db-button" class="w3-button w3-block w3-gray">
+            <b>Clear Database</b>
+        </button>
+    </div>
+
+    <div class="flex-container">
+        <div style="flex: 1 1 0; background-color: gray; padding: 0 10px;">
+            <h3 style="text-align: center">Stats</h3>
+
+            <div id="deceased_table">
+                {% if deceased_list %}
+                    <h3>Deceased</h3>
+                    <div class="w3-card w3-round" style="overflow-y:auto; max-height: 325px">
+
+                        <table class="w3-table w3-striped w3-bordered w3-hoverable">
+                            <thead>
+                            <tr>
+                                <th><h4>Date of death</h4></th>
+                                <th><h4>Age</h4>
+                                <th><h4>Gender</h4>
+                                <th><h4>Region</h4>
+                                <th><h4>County</h4>
+                                </th>
+                            </tr>
+                            </thead>
+
+                            <tbody id="deceased_rows">
+                            {% for deceased in deceased_list %}
+                                <tr>
+                                    <td>{{ deceased.date_of_death | date:"j.n.Y" }}</td>
+                                    <td>{{ deceased.age }}</td>
+                                    <td>{{ deceased.gender }}</td>
+                                    <td>{{ deceased.nuts_4_area.nuts_higher.name }}</td>
+                                    <td>{{ deceased.nuts_4_area.name }}</td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% endif %}
+            </div>
+
+
+            {% if area_cases %}
+                <div class="w3-section" style="height: 500px;" id="area_cases_graph">
+                </div>
+            {% endif %}
+
+            {% if age_data %}
+                <div class="w3-section" style="height: 500px;" id="box-graph-div">
+                </div>
+            {% endif %}
+
+            {% if weekly_deaths %}
+                <div class="w3-section" style="height: 500px;" id="weekly_deaths_graph">
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Middle Column -->
+    {#    <div style="flex: 2 1 0">#}
+    {##}
+    {#        <!-- End Middle Column -->#}
+    {#    </div>#}
+{% endblock %}

@@ -1,13 +1,16 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <title>{% block title %} {% endblock %}</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+
     {% load static %}
+
     <script src="{% static 'covid_app/js/jquery-3.3.1.min.js' %}"></script>
     <link rel="stylesheet" href="{% static 'covid_app/css/w3.css' %}">
     <link rel="stylesheet" href="{% static 'covid_app/css/style.css' %}">
+    <link rel = "icon" href ="{% static 'covid_app/images/covid-icon.png' %}" type = "image/x-icon">
 
     <link rel="stylesheet" href="https://www.w3schools.com/lib/w3-theme-blue-grey.css">
     <link rel='stylesheet' href='https://fonts.googleapis.com/css?family=Open+Sans'>
@@ -20,38 +23,29 @@
     <link rel="stylesheet" href="//code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
     <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
     <script src='https://cdn.plot.ly/plotly-latest.min.js'></script>
-    {{ game_form.media }}
 
     {% block scripts %}
     {% endblock %}
 </head>
 <body class="w3-theme-l5">
-<a name="top"></a>
 <!-- Navbar -->
-<body style="background-color: #F7F8FC;">
-
-<div class="w3-top header2">
+<div class="w3-top header">
     <div class="w3-bar w3-large header-content">
         <a class="w3-bar-item w3-hide-medium w3-hide-large w3-right w3-padding-large w3-hover-white w3-large"
            href="javascript:void(0);" onclick="openNav()"><i class="fa fa-bars"></i></a>
 
-        {#        <a href="{% url 'covid_app:index' %}" class="w3-bar-item"#}
-        {#           title="Homepage">#}
-        {#            #}
-        {#            <i class="covid-icon w3-margin-right"></i>#}
-        {#        </a>#}
         <div class="title-div">
             <img class="covid-icon" src="{% static 'covid_app/images/covid-icon.png' %}">
-            <a href="{% url 'covid_app:dashboard' %}" class="logo-text">COVID-19</a>
+            <a href="{% url 'covid_app:dashboard' %}" class="logo-text w3-hide-small">COVID-19</a>
         </div>
 
         <a href="{% url 'covid_app:dashboard' %}"
            class="w3-bar-item w3-button w3-hide-small w3-right header-button" title="Dashboard">Dashboard
         </a>
-        <a href="{% url 'covid_app:index' %}"
+        <a href="{% url 'covid_app:case_stats' %}"
            class="w3-bar-item w3-button w3-hide-small w3-right header-button" title="Statistics">Statistics
         </a>
-        <a href="{% url 'covid_app:index' %}"
+        <a href="{% url 'covid_app:dashboard' %}"
            class="w3-bar-item w3-button w3-hide-small w3-right header-button" title="TODO">TODO
         </a>
     </div>
@@ -65,100 +59,10 @@
     <a href="#" class="w3-bar-item w3-button w3-padding-large">My Profile</a>
 </div>
 
-<div class="w3-container" style="flex:1 0 auto; padding: 0;">
 
-    <div class="flex-container" style="flex-wrap: nowrap" id="top">
-
-        <!-- Left Column -->
-        {% block left_panel %}
-            {% if user.is_authenticated and side_bars_enabled %}
-                <div style="max-width: 250px; flex: 1 1 0; margin-left: 16px;">
-                    <!-- Profile -->
-                    <div class="w3-card w3-round w3-white">
-                        <div class="w3-container">
-                            <a href="{% url 'covid_app:index' user.player.slug %}">
-                                <h4 class="w3-center" style="font-family: 'Audiowide', cursive;">
-
-                                    {{ user.player.nickname }}
-
-                                </h4>
-                            </a>
-                            <p class="w3-center">
-                                {% if user.player.image_url %}
-                                    <img src="{{ user.player.image_url }}" class="w3-circle"
-                                         style="width:128px" alt="Avatar">
-                                {% else %}
-                                    <img src="{% static 'covid_app/images/default_avatar.png' %}" class="w3-circle"
-                                         style="height:128px;width:128px" alt="Avatar">
-                                {% endif %}
-                            </p>
-                            <hr>
-                            {% if user.player.full_name %}
-                                <p><i class="fas fa-id-card fa-fw w3-margin-right w3-text-theme"></i>
-                                    <b>{{ user.player.full_name }}</b>
-                                </p>
-                            {% endif %}
-                            {% if user.player.country %}
-                                <p><i class="fa fa-home fa-fw w3-margin-right w3-text-theme"></i>
-                                    <b>{{ user.player.country.name }}</b>
-                                </p>
-                            {% endif %}
-                            {% if user.player.birth_date %}
-                                <p><i class="fa fa-birthday-cake fa-fw w3-margin-right w3-text-theme"></i>
-                                    <b>{{ user.player.birth_date|date:"j.n.Y" }}</b>
-                                </p>
-                            {% endif %}
-                        </div>
-                    </div>
-                    <br>
-
-                    <!-- Accordion -->
-                    {% if user.player and user.player.tournaments.1 %}
-                        <div class="w3-card w3-round w3-white">
-                            <div class="w3-white w3-center w3-block w3-padding-3"><h5><b>Active tournaments</b></h5>
-                            </div>
-                            {% for tournament in user.player.tournaments.1 %}
-                                <a href="{% url 'covid_app:index' tournament.slug %}"
-                                   class="w3-button w3-block w3-theme-l1 w3-left-align">
-                                    {{ tournament.name }} {{ tournament.end_date|date:"j.n.Y" }}
-                                </a>
-                            {% endfor %}
-                            <div id="Demo3" class="w3-hide w3-container">
-                                <div class="w3-row-padding">
-                                </div>
-                            </div>
-                        </div>
-                        <br>
-                    {% endif %}
-
-                    {% if user.player and user.player.tournaments.0 %}
-                        <div class="w3-card w3-round w3-white">
-                            <div class="w3-white w3-center w3-block w3-padding-3"><h5><b>Upcoming tournaments</b></h5>
-                            </div>
-                            {% for tournament in user.player.tournaments.0 %}
-                                <a href="{% url 'covid_app:index' tournament.slug %}"
-                                   class="w3-button w3-block w3-theme-l1 w3-left-align">
-                                    {{ tournament.name }} {{ tournament.opening_date|date:"j.n.Y" }}
-                                </a>
-                            {% endfor %}
-                            <div id="Demo3" class="w3-hide w3-container">
-                                <div class="w3-row-padding">
-                                </div>
-                            </div>
-                        </div>
-                    {% endif %}
-                </div>
-            {% endif %}
-        {% endblock %}
-        <!-- End Left Column -->
-
-        {% block content %}
-        {% endblock %}
-
-
-        <!-- End Grid -->
-    </div>
-    <!-- End Page Container -->
+<div class="content-wrapper">
+{% block content %}
+{% endblock %}
 </div>
 
 
@@ -188,11 +92,6 @@
 </div>
 {% block endpage %}
 {% endblock %}
-<!-- Footer -->
-
-
-
-
 
 </body>
 </html>
