@@ -189,7 +189,7 @@ class StatisticsView(generic.TemplateView):
         }
         # print(f"Existing DBs: {db_client.list_database_names()}")
 
-    def get_area_cases(self):
+    def get_cases_by_area(self):
         area_cases = {}
         q_object = ~Q(code='CZ999') & ~Q(code='CZZZZ')  # Ignore extra region and unknown region
         query = NUTS_3_AREA.objects.filter(q_object).annotate(case_count=Count('nuts_4_area__confirmedcase')) \
@@ -198,6 +198,20 @@ class StatisticsView(generic.TemplateView):
             area_cases[area['name']] = area['case_count']
 
         return area_cases
+
+    def get_case_age_distribution(self):
+        male_cases = ConfirmedCase.objects.filter(gender='M')
+        female_cases = ConfirmedCase.objects.filter(gender='Z')
+        age_categories = {}
+        for lower_bound in range(0, 100, 10):
+            q_object = Q(age__gte=lower_bound) & Q(age__lt=lower_bound + 10)
+            age_categories[f"age{lower_bound}"] = Count('age', filter=q_object)
+        male_counts = male_cases.aggregate(**age_categories)
+        female_counts = female_cases.aggregate(**age_categories)
+        return {
+            'male_counts': list(male_counts.values()),
+            'female_counts': list(female_counts.values())
+        }
 
     def get_context_data(self, **kwargs):
         self.context = super().get_context_data(**kwargs)
@@ -228,9 +242,12 @@ class StatisticsView(generic.TemplateView):
         # self.context['deceased_list'] = deceased_query_set[:10]
         # self.context['deceased_data'] = json_data
 
-        area_cases = self.get_area_cases()
+        area_cases = self.get_cases_by_area()
         if area_cases:
             self.context['area_cases'] = json.dumps(area_cases)
+
+        age_distribution = self.get_case_age_distribution()
+        self.context['age_distribution'] = json.dumps(age_distribution)
 
         return self.context
 

@@ -10,7 +10,7 @@
     <script src="{% static 'covid_app/js/jquery-3.3.1.min.js' %}"></script>
     <link rel="stylesheet" href="{% static 'covid_app/css/w3.css' %}">
     <link rel="stylesheet" href="{% static 'covid_app/css/style.css' %}">
-    <link rel = "icon" href ="{% static 'covid_app/images/covid-icon.png' %}" type = "image/x-icon">
+    <link rel="icon" href="{% static 'covid_app/images/covid-icon.png' %}" type="image/x-icon">
 
     <link rel="stylesheet" href="https://www.w3schools.com/lib/w3-theme-blue-grey.css">
     <link rel='stylesheet' href='https://fonts.googleapis.com/css?family=Open+Sans'>
@@ -23,6 +23,16 @@
     <link rel="stylesheet" href="//code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
     <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
     <script src='https://cdn.plot.ly/plotly-latest.min.js'></script>
+
+    <script>
+        // Used to toggle the menu on smaller screens when clicking on the menu button
+        function openNav() {
+            let item = $("#navigation-small");
+            if (item) {
+                item.toggleClass('w3-show');
+            }
+        }
+    </script>
 
     {% block scripts %}
     {% endblock %}
@@ -52,7 +62,7 @@
 </div>
 
 <!-- Navbar on small screens -->
-<div id="navDemo" class="w3-bar-block w3-theme-d2 w3-hide w3-hide-large w3-hide-medium w3-large">
+<div id="navigation-small" class="w3-bar-block w3-theme-d2 w3-hide w3-hide-large w3-hide-medium w3-large">
     <a href="#" class="w3-bar-item w3-button w3-padding-large">Link 1</a>
     <a href="#" class="w3-bar-item w3-button w3-padding-large">Link 2</a>
     <a href="#" class="w3-bar-item w3-button w3-padding-large">Link 3</a>
@@ -61,8 +71,8 @@
 
 
 <div class="content-wrapper">
-{% block content %}
-{% endblock %}
+    {% block content %}
+    {% endblock %}
 </div>
 
 

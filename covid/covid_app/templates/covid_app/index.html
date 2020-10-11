@@ -39,40 +39,10 @@
             basePost("{% url 'covid_app:index' %}", 'import_data')
         }
 
-
-        function showSection(event, sectionID) {
-            let path = window.location.pathname;
-            let selected = $('#' + sectionID);
-            let tab = $('.section-tab.w3-border-red');
-            $('.section').hide();
-            tab.removeClass('w3-border-red');
-            selected.show();
-            if (event) {
-                $(event.target).addClass('w3-border-red');
-                sessionStorage.setItem(path + "selected_tab", event.target.id);
-            } else {
-                let tabID = sessionStorage.getItem(path + "selected_tab");
-                console.log(tabID);
-                if (tabID !== "") {
-                    let tab = $('#' + tabID);
-                    tab.addClass('w3-border-red');
-                }
-            }
-            sessionStorage.setItem(path + "selected_section", sectionID);
-        }
-
         function showGameInfo(event, id) {
             $(event.target).children().first().toggleClass('fa-angle-double-down');
             $(event.target).children().first().toggleClass('fa-angle-double-up');
             $("#" + id).toggleClass('accordion_open');
-        }
-
-        // Used to toggle the menu on smaller screens when clicking on the menu button
-        function openNav() {
-            let item = $("#navDemo");
-            if (item) {
-                item.toggleClass('w3-show');
-            }
         }
 
         function CloseModal(modalID) {

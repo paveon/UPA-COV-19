@@ -37,26 +37,35 @@
             basePost("{% url 'covid_app:case_stats' %}", 'update_data')
         }
 
-        $(document).ready(function () {
+
+        function showSection(event, sectionID) {
             let path = window.location.pathname;
-            let sectionID = sessionStorage.getItem(path + "selected_section");
-            if (sectionID) {
-                showSection(null, sectionID);
+            let selected = $('#' + sectionID);
+            {#let tab = $('.section-tab');#}
+            $('.graph-tab').hide();
+            {#tab.removeClass('w3-border-red');#}
+            selected.show();
+            {#let update = {#}
+            {#    width: selected.width(),#}
+            {#    height: selected.height()#}
+            {#Plotly.relayout(selected.attr('id'), update, {responsive: true});#}
+
+            if (event) {
+                $(event.target).addClass('w3-border-red');
+                sessionStorage.setItem(path + "selected_tab", event.target.id);
             } else {
-                let tabs = $('.section-tab');
-                if (tabs.length > 0) {
-                    let firstTab = tabs.first();
-                    firstTab.addClass('w3-border-red');
-                    if (firstTab.attr('id').endsWith('_tab')) {
-                        let sectionID = firstTab.attr('id').slice(0, -4);
-                        let section = $('#' + sectionID);
-                        if (section) {
-                            section.show();
-                        }
-                    }
+                let tabID = sessionStorage.getItem(path + "selected_tab");
+                console.log(tabID);
+                if (tabID !== "") {
+                    let tab = $('#' + tabID);
+                    tab.addClass('w3-border-red');
                 }
             }
+            sessionStorage.setItem(path + "selected_section", sectionID);
+        }
 
+
+        $(document).ready(function () {
             const resizeObserver = new ResizeObserver(entries => {
                 for (const entry of entries) {
                     console.log(entry);
@@ -134,6 +143,88 @@
                 Plotly.newPlot('area_cases_graph', [trace], layout, {responsive: true});
                 {#resizeObserver.observe($('#area_cases_graph')[0]);#}
             {% endif %}
+
+            {% if age_distribution %}
+                let age_distribution_data = JSON.parse("{{age_distribution|escapejs}}");
+
+                let y = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90];
+                let axis_labels = ['0-9', '10-19', '20-29', '30-39', '40-49',
+                    '50-59', '60-69', '70-79', '80-89', '90-99'];
+
+                layout = {
+                    yaxis: {
+                        title: {text: 'Age'},
+                        tickvals: y,
+                        ticktext: axis_labels
+                    },
+                    xaxis: {
+                        title: {text: 'Number of COVID-19 cases'},
+                    },
+                    paper_bgcolor: 'rgb(243, 243, 243)',
+                    plot_bgcolor: 'rgb(243, 243, 243)',
+                    barmode: 'overlay',
+                    bargap: 0.1
+                };
+
+                traces = [];
+                traces.push({
+                    y: y,
+                    x: age_distribution_data['male_counts'],
+                    orientation: 'h',
+                    name: 'Men',
+                    hoverinfo: 'x',
+                    type: 'bar',
+                });
+                traces.push({
+                    y: y,
+                    x: age_distribution_data['female_counts'].map(value => -value),
+                    orientation: 'h',
+                    name: 'Women',
+                    text: age_distribution_data['female_counts'],
+                    hoverinfo: 'text',
+                    type: 'bar',
+                });
+                Plotly.newPlot('test_graph', traces, layout, {responsive: true});
+
+                let traces_clone = JSON.parse(JSON.stringify(traces));
+                let layout_clone = JSON.parse(JSON.stringify(layout));
+
+                traces_clone[0].x = traces_clone[1].x = y;
+                traces_clone[0].hoverinfo = 'y';
+                traces_clone[0].orientation = traces_clone[1].orientation = 'v';
+                traces_clone[0].y = age_distribution_data['male_counts'];
+                traces_clone[1].y = age_distribution_data['female_counts'];
+                layout_clone.barmode = 'stack';
+                [layout_clone.xaxis.title, layout_clone.yaxis.title] = [layout_clone.yaxis.title, layout_clone.xaxis.title];
+                layout_clone.xaxis.tickvals = y;
+                layout_clone.xaxis.ticktext = axis_labels;
+                layout_clone.yaxis.tickvals = null;
+                layout_clone.yaxis.ticktext = null;
+                console.log(traces_clone);
+                console.log(layout_clone);
+
+                Plotly.newPlot('test_graph2', traces_clone, layout_clone, {responsive: true});
+            {% endif %}
+
+
+            let path = window.location.pathname;
+            let sectionID = sessionStorage.getItem(path + "selected_section");
+            if (sectionID) {
+                showSection(null, sectionID);
+            } else {
+                let tabs = $('.section-tab');
+                if (tabs.length > 0) {
+                    let firstTab = tabs.first();
+                    firstTab.addClass('w3-border-red');
+                    if (firstTab.attr('id').endsWith('_tab')) {
+                        let sectionID = firstTab.attr('id').slice(0, -4);
+                        let section = $('#' + sectionID);
+                        if (section) {
+                            section.show();
+                        }
+                    }
+                }
+            }
         });
 
     </script>
@@ -149,7 +240,8 @@
                 class="w3-button w3-block w3-gray w3-border-bottom">
             <b>Import Data</b>
         </button>
-        <button onclick="updateData()" type="button" id="data-update-button" class="w3-button w3-block w3-gray w3-border-bottom">
+        <button onclick="updateData()" type="button" id="data-update-button"
+                class="w3-button w3-block w3-gray w3-border-bottom">
             <b>Update Data</b>
         </button>
         <button onclick="clearDb()" type="button" id="clear-db-button" class="w3-button w3-block w3-gray">
@@ -194,6 +286,20 @@
                 {% endif %}
             </div>
 
+
+            <div class="graph-container">
+                <div class="graph-tabs">
+                    <div class="tab">
+                        <button class="tablinks" onclick="showSection(event, 'test_graph')">Pyramid view</button>
+                        <button class="tablinks" onclick="showSection(event, 'test_graph2')">Stacked bar view</button>
+                    </div>
+                </div>
+                <div class="graph-tab" style="height: 500px;" id="test_graph">
+                </div>
+
+                <div class="graph-tab" style="height: 500px;" id="test_graph2">
+                </div>
+            </div>
 
             {% if area_cases %}
                 <div class="w3-section" style="height: 500px;" id="area_cases_graph">
