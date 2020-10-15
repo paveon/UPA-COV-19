@@ -107,7 +107,7 @@ def process_csu_dataset(begin_date, source_response):
 def main():
     db_client = pymongo.MongoClient("mongodb://localhost:27017/")
     print(f"Existing DBs: {db_client.list_database_names()}")
-    # db_client.drop_database('covid_data')
+    db_client.drop_database('covid_data')
     db = db_client['covid_data']
     names = db.list_collection_names()
 

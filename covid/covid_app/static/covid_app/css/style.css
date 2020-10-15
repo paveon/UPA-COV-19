@@ -1,5 +1,6 @@
 html, body {
     height: 100%;
+    background-color: #363434;
 }
 
 body {
@@ -18,7 +19,8 @@ body {
     text-align: center;
     vertical-align: middle;
     display: inline-block;
-    color: #5ACAB0;
+    /*color: #5ACAB0;*/
+    color: #e38134;
     height: 60px;
     line-height: 60px;
 }
@@ -28,8 +30,10 @@ body {
 }
 
 .header {
-    background-color: white;
-    box-shadow: 0 0 5px 0 rgba(0, 0, 0, 0.2);
+    /*background-color: white;*/
+    background-color: #2d2626;
+    /*box-shadow: 0 0 5px 0 rgba(0, 0, 0, 0.2);*/
+    box-shadow: 0 0 5px 0 rgba(147, 147, 147, 0.5);
     height: 60px;
 }
 
@@ -175,18 +179,27 @@ article p {
     height: 60px;
     vertical-align: middle;
     line-height: 46px;
+    color: #ff814d;
+    font-weight: bold;
+}
+
+.header-button:hover {
+    color: #ff4c3b !important;
+    background-color: #393838 !important;
 }
 
 
 /* Style the tab */
-.tab {
+.graph-view-tabs {
     overflow: hidden;
+    /*border-bottom: 1px solid #ccc;*/
+    /*background-color: #f1f1f1;*/
     border-bottom: 1px solid #ccc;
-    background-color: #f1f1f1;
+    background-color: #474747;
 }
 
 /* Style the buttons inside the tab */
-.tab button {
+.graph-view-tabs button {
     background-color: inherit;
     float: left;
     border: none;
@@ -196,21 +209,27 @@ article p {
     transition: 0.3s;
     font-size: 17px;
     border-right: 1px solid #ccc;
+    color: #e0e0e0;
+    font-weight: bold;
 }
 
 /* Change background color of buttons on hover */
-.tab button:hover {
-    background-color: #ddd;
+.graph-view-tabs button:hover {
+    /*background-color: #dddddd;*/
+    background-color: #232323;
+    color: #ff814d;
 }
 
 /* Create an active/current tablink class */
-.tab button.active {
-    background-color: #ccc;
+.graph-view-tabs button.active {
+    /*background-color: #ccc;*/
+    background-color: #000000;
+    color: #ff814d;
 }
 
-/* Style the tab content */
-.graph-tab {
-    display: none;
-    /*border: 1px solid #ccc;*/
-    /*border-top: none;*/
+.graph-container {
+}
+
+.graph-view-wrapper {
+    height: 500px;
 }

@@ -16,6 +16,30 @@
                 success: function (json) {
                     location.reload();
                 },
+                error: function (xhr, textStatus, errorThrown) {
+                    console.log("AJAX POST failure");
+                    console.log(xhr);
+                    console.log(textStatus);
+                    console.log(errorThrown);
+                }
+            });
+        }
+
+
+        function baseGet(url, getData, successCallback) {
+            $.ajax({
+                type: 'GET',
+                url: url,
+                data: getData,
+                dataType: 'json',
+                async: true,
+                success: successCallback,
+                error: function (xhr, textStatus, errorThrown) {
+                    console.log("AJAX GET failure");
+                    console.log(xhr);
+                    console.log(textStatus);
+                    console.log(errorThrown);
+                }
             });
         }
 
@@ -25,8 +49,6 @@
 
         function clearDb() {
             basePost("{% url 'covid_app:case_stats' %}", 'clear_db')
-            // location.href="{% url 'covid_app:case_stats' %}";
-            // $.get("/covid_app/clear_db/", null);
         }
 
         function importData() {
@@ -38,193 +60,77 @@
         }
 
 
-        function showSection(event, sectionID) {
-            let path = window.location.pathname;
-            let selected = $('#' + sectionID);
-            {#let tab = $('.section-tab');#}
-            $('.graph-tab').hide();
-            {#tab.removeClass('w3-border-red');#}
-            selected.show();
-            {#let update = {#}
-            {#    width: selected.width(),#}
-            {#    height: selected.height()#}
-            {#Plotly.relayout(selected.attr('id'), update, {responsive: true});#}
+        function selectGraphView(event, graphDivID) {
+            let graphDiv = $('#' + graphDivID);
+            let buttonTabs = graphDiv.prev().children('button');
+            let targetUrl = graphDiv.data('url');
+            let dataRetrieveAction = graphDiv.data('action');
+            let active_tab = buttonTabs.filter('.active');
+            active_tab.removeClass('active');
 
+            let storage_key = window.location.pathname + graphDivID;
+            let selectedTab;
             if (event) {
-                $(event.target).addClass('w3-border-red');
-                sessionStorage.setItem(path + "selected_tab", event.target.id);
+                selectedTab = $(event.target);
             } else {
-                let tabID = sessionStorage.getItem(path + "selected_tab");
-                console.log(tabID);
-                if (tabID !== "") {
-                    let tab = $('#' + tabID);
-                    tab.addClass('w3-border-red');
+                let selectedTabIdx = sessionStorage.getItem(storage_key);
+                if (selectedTabIdx != null) {
+                    selectedTab = buttonTabs.eq(selectedTabIdx);
+                } else {
+                    selectedTab = buttonTabs.first();
                 }
             }
-            sessionStorage.setItem(path + "selected_section", sectionID);
+            selectedTab.addClass('active');
+            sessionStorage.setItem(storage_key, selectedTab.index());
+
+            let getData = {
+                action: dataRetrieveAction,
+                graphViewID: selectedTab.index()
+            };
+
+            baseGet(targetUrl, getData, function (data, status, xhr) {
+                if (graphDiv.children().length > 0) {
+                    Plotly.react(graphDivID, data['graph_data'], data['graph_layout'], {responsive: true});
+                } else {
+                    Plotly.newPlot(graphDivID, data['graph_data'], data['graph_layout'], {responsive: true});
+                }
+            });
         }
 
 
         $(document).ready(function () {
-            const resizeObserver = new ResizeObserver(entries => {
-                for (const entry of entries) {
-                    console.log(entry);
-                    console.log(entry.target.id);
-                    let update = {
-                        width: entry.contentRect.width,
-                        height: entry.contentRect.height
-                    };
-                    Plotly.relayout(entry.target.id, update);
-                }
-            });
-
-
-            // const deceased_data = JSON.parse("{{deceased_data|escapejs}}");
-            // console.log(deceased_data);
             let trace = null;
             let traces = [];
             let layout = null;
 
-            {% if age_data %}
-                trace = {
-                    y: JSON.parse("{{age_data|escapejs}}"),
-                    boxpoints: 'all',
-                    type: 'box',
-                    name: 'Age at death'
-                }
-                layout = {
-                    title: 'Age of Dead Patients for COVID-19',
-                    paper_bgcolor: 'rgb(243, 243, 243)',
-                    plot_bgcolor: 'rgb(243, 243, 243)',
-                    showlegend: false,
-                    autosize: true
-                };
+            {#            {% if weekly_deaths %}#}
+            {#                let weekly_deaths_data = JSON.parse("{{weekly_deaths|escapejs}}")#}
+            {#                traces = []#}
+            {#                for (let i = 0; i < 52; i++) {#}
+            {#                    traces.push({#}
+            {#                        y: weekly_deaths_data[i + 1],#}
+            {#                        type: 'box',#}
+            {#                        name: `Week ${i + 1}`#}
+            {#                    })#}
+            {#                }#}
+            {#                layout = {#}
+            {#                    title: 'Weekly deaths data summarization from 2011 to present',#}
+            {#                    paper_bgcolor: 'rgb(243, 243, 243)',#}
+            {#                    plot_bgcolor: 'rgb(243, 243, 243)',#}
+            {#                    showlegend: false,#}
+            {#                    autosize: true#}
+            {#                };#}
+            {##}
+            {#                Plotly.newPlot('weekly_deaths_graph', traces, layout, {responsive: true});#}
+            {#resizeObserver.observe($('#weekly_deaths_graph')[0]);#}
+            {#            {% endif %}#}
 
-                Plotly.newPlot('box-graph-div', [trace], layout, {responsive: true});
-                {#resizeObserver.observe($('#box-graph-div')[0]);#}
-            {% endif %}
-
-            {% if weekly_deaths %}
-                let weekly_deaths_data = JSON.parse("{{weekly_deaths|escapejs}}")
-                traces = []
-                for (let i = 0; i < 52; i++) {
-                    traces.push({
-                        y: weekly_deaths_data[i + 1],
-                        type: 'box',
-                        name: `Week ${i + 1}`
-                    })
-                }
-                layout = {
-                    title: 'Weekly deaths data summarization from 2011 to present',
-                    paper_bgcolor: 'rgb(243, 243, 243)',
-                    plot_bgcolor: 'rgb(243, 243, 243)',
-                    showlegend: false,
-                    autosize: true
-                };
-
-                Plotly.newPlot('weekly_deaths_graph', traces, layout, {responsive: true});
-                {#resizeObserver.observe($('#weekly_deaths_graph')[0]);#}
-            {% endif %}
-
-            {% if area_cases %}
-                let region_cases_data = JSON.parse("{{area_cases|escapejs}}")
-                trace = {
-                    x: Object.keys(region_cases_data),
-                    y: Object.values(region_cases_data),
-                    type: 'bar',
-                    name: 'Region case counts'
-                }
-                layout = {
-                    title: 'Region Counts of COVID-19 Cases Confirmed by Regional Hygiene Office',
-                    paper_bgcolor: 'rgb(243, 243, 243)',
-                    plot_bgcolor: 'rgb(243, 243, 243)',
-                    autosize: true
-                };
-                Plotly.newPlot('area_cases_graph', [trace], layout, {responsive: true});
-                {#resizeObserver.observe($('#area_cases_graph')[0]);#}
-            {% endif %}
-
-            {% if age_distribution %}
-                let age_distribution_data = JSON.parse("{{age_distribution|escapejs}}");
-
-                let y = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90];
-                let axis_labels = ['0-9', '10-19', '20-29', '30-39', '40-49',
-                    '50-59', '60-69', '70-79', '80-89', '90-99'];
-
-                layout = {
-                    yaxis: {
-                        title: {text: 'Age'},
-                        tickvals: y,
-                        ticktext: axis_labels
-                    },
-                    xaxis: {
-                        title: {text: 'Number of COVID-19 cases'},
-                    },
-                    paper_bgcolor: 'rgb(243, 243, 243)',
-                    plot_bgcolor: 'rgb(243, 243, 243)',
-                    barmode: 'overlay',
-                    bargap: 0.1
-                };
-
-                traces = [];
-                traces.push({
-                    y: y,
-                    x: age_distribution_data['male_counts'],
-                    orientation: 'h',
-                    name: 'Men',
-                    hoverinfo: 'x',
-                    type: 'bar',
-                });
-                traces.push({
-                    y: y,
-                    x: age_distribution_data['female_counts'].map(value => -value),
-                    orientation: 'h',
-                    name: 'Women',
-                    text: age_distribution_data['female_counts'],
-                    hoverinfo: 'text',
-                    type: 'bar',
-                });
-                Plotly.newPlot('test_graph', traces, layout, {responsive: true});
-
-                let traces_clone = JSON.parse(JSON.stringify(traces));
-                let layout_clone = JSON.parse(JSON.stringify(layout));
-
-                traces_clone[0].x = traces_clone[1].x = y;
-                traces_clone[0].hoverinfo = 'y';
-                traces_clone[0].orientation = traces_clone[1].orientation = 'v';
-                traces_clone[0].y = age_distribution_data['male_counts'];
-                traces_clone[1].y = age_distribution_data['female_counts'];
-                layout_clone.barmode = 'stack';
-                [layout_clone.xaxis.title, layout_clone.yaxis.title] = [layout_clone.yaxis.title, layout_clone.xaxis.title];
-                layout_clone.xaxis.tickvals = y;
-                layout_clone.xaxis.ticktext = axis_labels;
-                layout_clone.yaxis.tickvals = null;
-                layout_clone.yaxis.ticktext = null;
-                console.log(traces_clone);
-                console.log(layout_clone);
-
-                Plotly.newPlot('test_graph2', traces_clone, layout_clone, {responsive: true});
-            {% endif %}
-
-
-            let path = window.location.pathname;
-            let sectionID = sessionStorage.getItem(path + "selected_section");
-            if (sectionID) {
-                showSection(null, sectionID);
-            } else {
-                let tabs = $('.section-tab');
-                if (tabs.length > 0) {
-                    let firstTab = tabs.first();
-                    firstTab.addClass('w3-border-red');
-                    if (firstTab.attr('id').endsWith('_tab')) {
-                        let sectionID = firstTab.attr('id').slice(0, -4);
-                        let section = $('#' + sectionID);
-                        if (section) {
-                            section.show();
-                        }
-                    }
-                }
-            }
+            // TODO: This is not a great idea, will be slow as hell later on. Would be nice to create some
+            // TODO: kind of menu to switch which graph to load through AJAX maybe? Dunno
+            selectGraphView(null, 'cases_age_distribution_graph');
+            selectGraphView(null, 'area_cases_graph');
+            selectGraphView(null, 'age_average_evolution_graph');
+            selectGraphView(null, 'deaths_age_graph');
         });
 
     </script>
@@ -286,35 +192,91 @@
                 {% endif %}
             </div>
 
-
-            <div class="graph-container">
-                <div class="graph-tabs">
-                    <div class="tab">
-                        <button class="tablinks" onclick="showSection(event, 'test_graph')">Pyramid view</button>
-                        <button class="tablinks" onclick="showSection(event, 'test_graph2')">Stacked bar view</button>
-                    </div>
+            <!---
+            TODO: this is dumb AF, create template and pass
+            TODO: necessary data through context to auto-generate all graph divs, will be easier to maintain
+            -->
+            <div class="graph-view-wrapper w3-section">
+                <div class="graph-view-tabs">
+                    <button class=""
+                            onclick="selectGraphView(event, 'cases_age_distribution_graph')">
+                        Pyramid View
+                    </button>
+                    <button class=""
+                            onclick="selectGraphView(event, 'cases_age_distribution_graph')">
+                        Stacked Bar View
+                    </button>
+                    <button class=""
+                            onclick="selectGraphView(event, 'cases_age_distribution_graph')">
+                        Daily Change View
+                    </button>
+                    <button class=""
+                            onclick="selectGraphView(event, 'cases_age_distribution_graph')">
+                        Cumulative View
+                    </button>
                 </div>
-                <div class="graph-tab" style="height: 500px;" id="test_graph">
-                </div>
-
-                <div class="graph-tab" style="height: 500px;" id="test_graph2">
+                <div class="graph-container" id="cases_age_distribution_graph"
+                     data-action="get_age_distribution"
+                     data-url="{% url 'covid_app:case_stats' %}">
                 </div>
             </div>
 
-            {% if area_cases %}
-                <div class="w3-section" style="height: 500px;" id="area_cases_graph">
+            <div class="graph-view-wrapper w3-section">
+                <div class="graph-view-tabs">
+                    <button class="" onclick="selectGraphView(event, 'area_cases_graph')">
+                        Bar View
+                    </button>
+                    <button class="" onclick="selectGraphView(event, 'area_cases_graph')">
+                        TODO
+                    </button>
                 </div>
-            {% endif %}
+                <div class="graph-container" id="area_cases_graph"
+                     data-action="get_area_cases"
+                     data-url="{% url 'covid_app:case_stats' %}">
+                </div>
+            </div>
 
-            {% if age_data %}
-                <div class="w3-section" style="height: 500px;" id="box-graph-div">
+            <div class="graph-view-wrapper w3-section">
+                <div class="graph-view-tabs">
+                    <button class="" onclick="selectGraphView(event, 'age_average_evolution_graph')" disabled>
+                        Default
+                    </button>
                 </div>
-            {% endif %}
+                <div class="graph-container" id="age_average_evolution_graph"
+                     data-action="get_age_average_evolution"
+                     data-url="{% url 'covid_app:case_stats' %}">
+                </div>
+            </div>
 
-            {% if weekly_deaths %}
-                <div class="w3-section" style="height: 500px;" id="weekly_deaths_graph">
+            <div class="graph-view-wrapper w3-section">
+                <div class="graph-view-tabs">
+                    <button class="" onclick="selectGraphView(event, 'deaths_age_graph')" disabled>
+                        Default
+                    </button>
                 </div>
-            {% endif %}
+                <div class="graph-container" id="deaths_age_graph"
+                     data-action="get_death_age_data"
+                     data-url="{% url 'covid_app:case_stats' %}">
+                </div>
+            </div>
+
+
+            <div class="graph-view-wrapper w3-section">
+                <div class="graph-view-tabs">
+                    <button class="" onclick="selectGraphView(event, 'deaths_age_graph')" disabled>
+                        Default
+                    </button>
+                </div>
+                <div class="graph-container" id="deaths_age_graph"
+                     data-action="get_death_age_data"
+                     data-url="{% url 'covid_app:case_stats' %}">
+                </div>
+            </div>
+
+            {#            {% if weekly_deaths %}#}
+            {#                <div class="w3-section" style="height: 500px;" id="weekly_deaths_graph">#}
+            {#                </div>#}
+            {#            {% endif %}#}
         </div>
     </div>
 

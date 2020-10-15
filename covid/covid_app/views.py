@@ -1,19 +1,18 @@
 import pymongo
 import json
 from django.shortcuts import render
-from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
-from django.template import loader
-from django.urls import reverse
-from django.apps import AppConfig, apps
-from django.db.models import F, Q, Count
+from django.http import JsonResponse
+from django.apps import apps
+from django.db.models import F, Q, Count, Avg, Window, ValueRange, RowRange
 from django.utils.decorators import method_decorator
 from django.views import generic, View
-from django.core import serializers
 from django.views.decorators.cache import never_cache
+from datetime import datetime
+from django.core.cache import cache
+
 from .area_codes import *
 from .download_utils import download
 from .models import *
-from datetime import datetime
 
 URL_COVID_OVERVIEW = 'https://onemocneni-aktualne.mzcr.cz/api/v2/covid-19/zakladni-prehled.json'
 
@@ -41,6 +40,28 @@ def import_collection(covid_db, collection_name, model_cls, mapping, begin_date=
     model_cls.objects.bulk_create(objects)
 
 
+def get_base_layout(title, xtitle=None, ytitle=None, barmode=None, xtickvals=None, xticktext=None, ytickvals=None,
+                    yticktext=None):
+    return {
+        'title': title,
+        'titlefont': {'color': 'white'},
+        'yaxis': {'title': ytitle, 'gridcolor': 'rgba(255, 255, 255, 0.75)',
+                  'titlefont': {'color': 'white'}, 'tickfont': {'color': 'white'},
+                  'tickvals': ytickvals, 'ticktext': yticktext,
+                  },
+        'xaxis': {'title': xtitle, 'gridcolor': 'rgba(255, 255, 255, 0.75)',
+                  'titlefont': {'color': 'white'}, 'tickfont': {'color': 'white'},
+                  'tickvals': xtickvals, 'ticktext': xticktext,
+                  },
+        'legend': {'font': {'color': 'white'}},
+        'paper_bgcolor': 'rgb(45, 38, 38)',
+        'plot_bgcolor': 'rgb(45, 38, 38)',
+        # 'paper_bgcolor': 'rgb(243, 243, 243)',
+        # 'plot_bgcolor': 'rgb(243, 243, 243)',
+        'barmode': barmode,
+    }
+
+
 @method_decorator(never_cache, name='dispatch')
 class StatisticsView(generic.TemplateView):
     template_name = 'covid_app/statistics.html'
@@ -51,6 +72,7 @@ class StatisticsView(generic.TemplateView):
         RecoveredPerson.objects.all().delete()
         WeeklyDeaths.objects.all().delete()
         DailyStatistics.objects.all().delete()
+        cache.delete_many(self.get_actions.keys())
         # return render(request, 'covid_app/index.html')
         # return HttpResponseRedirect(reverse('covid_app:index'))
 
@@ -168,6 +190,7 @@ class StatisticsView(generic.TemplateView):
         self.db_client = pymongo.MongoClient("mongodb://localhost:27017/")
         self.db = self.db_client['covid_data']
         self.action_key = None
+        self.request = None
         self.response = {}
         self.context = {}
 
@@ -181,13 +204,30 @@ class StatisticsView(generic.TemplateView):
         self.daily_stats_mapping = None
         self.recovered_mapping = None
 
-        self.actions = {
+        self.post_actions = {
             'populate_area_tables': self.populate_area_tables,
             'import_data': self.import_data,
             'update_data': self.update_data,
             'clear_db': self.clear_db,
         }
+        self.get_actions = {
+            'get_age_distribution': self.get_case_age_distribution,
+            'get_area_cases': self.get_cases_by_area,
+            'get_age_average_evolution': self.get_age_average_evolution,
+            'get_death_age_data': self.get_death_age_data,
+        }
         # print(f"Existing DBs: {db_client.list_database_names()}")
+
+    def get_death_age_data(self):
+        age_data = list(CovidDeath.objects.all().values_list('age', flat=True))
+        graph_data = [{
+            'y': age_data,
+            'type': 'box',
+            'name': 'Age at death'
+        }]
+        graph_layout = get_base_layout('Age of Dead Patients for COVID-19')
+        graph_layout['showlegend'] = False
+        return {'graph_layout': graph_layout, 'graph_data': graph_data}
 
     def get_cases_by_area(self):
         area_cases = {}
@@ -197,21 +237,150 @@ class StatisticsView(generic.TemplateView):
         for area in query:
             area_cases[area['name']] = area['case_count']
 
-        return area_cases
+        graph_data = [{
+            'x': list(area_cases.keys()),
+            'y': list(area_cases.values()),
+            'type': 'bar',
+            'name': 'Region Case Counts'
+        }]
+
+        graph_layout = get_base_layout('Region Counts of COVID-19 Cases Confirmed by Regional Hygiene Office',
+                                       xtitle='Region', ytitle='Number of Cases')
+        return {'graph_layout': graph_layout, 'graph_data': graph_data}
 
     def get_case_age_distribution(self):
-        male_cases = ConfirmedCase.objects.filter(gender='M')
-        female_cases = ConfirmedCase.objects.filter(gender='Z')
-        age_categories = {}
-        for lower_bound in range(0, 100, 10):
-            q_object = Q(age__gte=lower_bound) & Q(age__lt=lower_bound + 10)
-            age_categories[f"age{lower_bound}"] = Count('age', filter=q_object)
-        male_counts = male_cases.aggregate(**age_categories)
-        female_counts = female_cases.aggregate(**age_categories)
-        return {
-            'male_counts': list(male_counts.values()),
-            'female_counts': list(female_counts.values())
-        }
+        age_distribution = cache.get(self.request.GET['action'])
+        # age_distribution = None
+        if age_distribution:
+            male_counts = age_distribution['male_counts']
+            female_counts = age_distribution['female_counts']
+            case_counts_evolution = age_distribution['case_counts_evolution']
+        else:
+            male_cases = ConfirmedCase.objects.filter(gender='M')
+            female_cases = ConfirmedCase.objects.filter(gender='Z')
+
+            age_categories = {}
+            age_windows = {}
+            age_windows_incr = {}
+            for lower_bound in range(0, 100, 10):
+                q_object = Q(age__gte=lower_bound) & Q(age__lt=lower_bound + 10)
+                age_categories[f"age{lower_bound}"] = Count('age', filter=q_object)
+                age_windows[f"cumulative_{lower_bound}"] = Window(
+                    expression=Count('age', filter=q_object),
+                    order_by=F('report_date').asc()
+                )
+                age_windows_incr[f"incremental_{lower_bound}"] = Window(
+                    expression=Count('age', filter=q_object),
+                    partition_by=[F'report_date'],
+                    order_by=F('report_date').asc()
+                )
+
+            # ConfirmedCase.objects.filter(Q(age__gte=20) & Q(age__lte=30) & Q(report_date__lte=datetime(2020, 3, 6).date())).count()
+            case_counts_in_time = list(ConfirmedCase.objects.annotate(**age_windows, **age_windows_incr)
+                                       .values_list('report_date', *age_windows.keys(), *age_windows_incr.keys())
+                                       .distinct())
+
+            # Transpose list of lists (columns -> rows)
+            case_counts_evolution = list(map(list, zip(*case_counts_in_time)))
+
+            male_counts = list(male_cases.aggregate(**age_categories).values())
+            female_counts = list(female_cases.aggregate(**age_categories).values())
+            cache.set(self.request.GET['action'], {
+                'male_counts': male_counts,
+                'female_counts': female_counts,
+                'case_counts_evolution': case_counts_evolution
+            })
+
+        age_labels = ['0-9', '10-19', '20-29', '30-39', '40-49', '50-59', '60-69', '70-79', '80-89', '90-99']
+
+        view_id = int(self.request.GET['graphViewID'])
+        if view_id < 2:
+            age_categories = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
+            graph_layout = get_base_layout('Age Distribution of Confirmed COVID-19 Cases', barmode='overlay',
+                                           xtitle='Number of COVID-19 cases', ytitle='Age')
+            graph_layout['bargap'] = 0.1
+            graph_data = [{
+                'y': age_categories,
+                'x': male_counts,
+                'orientation': 'h',
+                'name': 'Men',
+                'hoverinfo': 'x',
+                'type': 'bar',
+            }, {
+                'y': age_categories,
+                'x': [-x for x in female_counts],
+                'orientation': 'h',
+                'name': 'Women',
+                'text': female_counts,
+                'hoverinfo': 'text',
+                'type': 'bar',
+            }]
+            if view_id == 1:
+                graph_layout['yaxis'], graph_layout['xaxis'] = graph_layout['xaxis'], graph_layout['yaxis']
+                graph_layout['barmode'] = 'stack'
+                graph_data[0]['x'] = graph_data[1]['x'] = age_categories
+                graph_data[0]['hoverinfo'] = 'y'
+                graph_data[0]['orientation'] = graph_data[1]['orientation'] = 'v'
+                graph_data[0]['y'] = male_counts
+                graph_data[1]['y'] = female_counts
+
+        else:
+            if view_id == 2:
+                title = "Confirmed Cases - Daily Change"
+                data = case_counts_evolution[11:]
+            else:
+                title = "Confirmed Cases - Cumulative"
+                data = case_counts_evolution[1:11]
+
+            graph_layout = get_base_layout(title, barmode='overlay',
+                                           xtitle='Date', ytitle='Number of Cases')
+            graph_data = []
+            for age_label, age_category in zip(age_labels, data):
+                graph_data.append({
+                    'type': 'scatter',
+                    'x': case_counts_evolution[0],
+                    'y': age_category,
+                    'mode': 'lines',
+                    'name': age_label
+                })
+
+        return {'graph_layout': graph_layout, 'graph_data': graph_data}
+
+    def get_age_average_evolution(self):
+        # cached_data = cache.get(self.request.GET['action'])
+        cached_data = None
+        if cached_data:
+            dates = cached_data['dates']
+            averages = cached_data['averages']
+        else:
+            averages_queryset = ConfirmedCase.objects.annotate(
+                moving_age_avg=Window(
+                    expression=Avg('age'),
+                    # partition_by=[F('report_date')],
+                    order_by=F('report_date').asc(),
+                )
+            ).values('report_date', 'moving_age_avg').distinct()
+
+            dates = []
+            averages = []
+            for day in averages_queryset:
+                dates.append(day['report_date'])
+                averages.append(day['moving_age_avg'])
+
+            cache.set(self.request.GET['action'], {
+                'dates': dates,
+                'averages': averages
+            })
+
+        graph_data = [{
+            'type': 'scatter',
+            'x': dates,
+            'y': averages,
+            'mode': 'lines',
+        }]
+        graph_layout = get_base_layout('Age Average Evolution of COVID-19 Cases', barmode='overlay',
+                                       xtitle='Date', ytitle='Average Age to Date')
+        return {'graph_layout': graph_layout, 'graph_data': graph_data}
 
     def get_context_data(self, **kwargs):
         self.context = super().get_context_data(**kwargs)
@@ -234,37 +403,23 @@ class StatisticsView(generic.TemplateView):
         if grouped:
             self.context['weekly_deaths'] = json.dumps(grouped)
 
-        age_data = list(CovidDeath.objects.all().values_list('age', flat=True))
-        if age_data:
-            self.context['age_data'] = json.dumps(age_data)
-        # age_data = list(deceased_query_set.values_list('age', flat=True))
-        # json_data = serializers.serialize('json', deceased_query_set)
-        # self.context['deceased_list'] = deceased_query_set[:10]
-        # self.context['deceased_data'] = json_data
-
-        area_cases = self.get_cases_by_area()
-        if area_cases:
-            self.context['area_cases'] = json.dumps(area_cases)
-
-        age_distribution = self.get_case_age_distribution()
-        self.context['age_distribution'] = json.dumps(age_distribution)
-
         return self.context
 
-    # def get(self, request, *args, **kwargs):
-    #     if request.is_ajax():
-    #         self.action_key = request.GET['action']
-    #         action = self.actions[self.action_key]
-    #         action()
-    #         return JsonResponse(self.response)
-    #     else:
-    #         self.context = self.get_context_data(**kwargs)
-    #         return render(request, self.template_name, self.context)
+    def get(self, request, *args, **kwargs):
+        self.request = request
+        if self.request.is_ajax():
+            self.action_key = self.request.GET['action']
+            action = self.get_actions[self.action_key]
+            json_data = action()
+            return JsonResponse(json_data)
+        else:
+            self.context = self.get_context_data(**kwargs)
+            return render(self.request, self.template_name, self.context)
 
     def post(self, request, *args, **kwargs):
         self.context = self.get_context_data(**kwargs)
         self.action_key = request.POST['action']
-        action = self.actions[self.action_key]
+        action = self.post_actions[self.action_key]
         if request.is_ajax():
             action()
             return JsonResponse(self.response)
