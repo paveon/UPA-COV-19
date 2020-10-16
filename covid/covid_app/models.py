@@ -62,6 +62,8 @@ class RecoveredPerson(models.Model):
 
 
 class CovidDeathManager(models.Manager):
+    # Returns death count for specified day, results may vary from
+    # 'DailyStatistics.objects.death_count' as they are both updated differently
     def death_count(self, date_of_death):
         return self.filter(date_of_death=date_of_death).count()
 
@@ -132,6 +134,9 @@ class DailyStatsManager(models.Manager):
         except DailyStatistics.DoesNotExist:
             return count
 
+    # Returns death count for specified day, results may vary from
+    # 'CovidDeath.objects.death_count' as they are both updated differently
+    # (this one is updated more frequently as it's completely anonymous data)
     def death_count(self, at_date):
         count = 0
         try:

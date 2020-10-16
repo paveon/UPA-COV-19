@@ -4,10 +4,12 @@ from django.shortcuts import render
 from django.http import JsonResponse
 from django.apps import apps
 from django.db.models import F, Q, Count, Avg, Window, ValueRange, RowRange
+from django.db.models.functions import ExtractWeek, ExtractYear
 from django.utils.decorators import method_decorator
 from django.views import generic, View
 from django.views.decorators.cache import never_cache
 from datetime import datetime
+from django.urls import reverse
 from django.core.cache import cache
 
 from .area_codes import *
@@ -169,11 +171,11 @@ class StatisticsView(generic.TemplateView):
     def import_data(self):
         self.clear_db()
 
-        if not NUTS_0_AREA.objects.exists() \
-                or not NUTS_1_AREA.objects.exists() \
-                or not NUTS_2_AREA.objects.exists() \
-                or not NUTS_3_AREA.objects.exists() \
-                or not NUTS_4_AREA.objects.exists():
+        if (not NUTS_0_AREA.objects.exists()
+                or not NUTS_1_AREA.objects.exists()
+                or not NUTS_2_AREA.objects.exists()
+                or not NUTS_3_AREA.objects.exists()
+                or not NUTS_4_AREA.objects.exists()):
             self.populate_area_tables()
 
         self.cache_regions()
@@ -215,11 +217,64 @@ class StatisticsView(generic.TemplateView):
             'get_area_cases': self.get_cases_by_area,
             'get_age_average_evolution': self.get_age_average_evolution,
             'get_death_age_data': self.get_death_age_data,
+            'get_weekly_deaths': self.get_weekly_deaths,
         }
         # print(f"Existing DBs: {db_client.list_database_names()}")
 
+    def from_cache_or_compute(self, compute_func, view_id):
+        action_name = self.request.GET['action']
+        view_cache = cache.get(action_name, {})
+        graph_view_cache = view_cache.get(view_id)
+        if graph_view_cache:
+            return graph_view_cache
+
+        data = compute_func()
+        view_cache[view_id] = data
+        cache.set(action_name, view_cache)
+        return data
+
+    def get_weekly_deaths(self):
+        view_id = int(self.request.GET['graphViewID'])
+
+        def compute():
+            expr = (F('death_count_1') + F('death_count_2') + F('death_count_3') +
+                    F('death_count_4') + F('death_count_5'))
+            week_numbers = WeeklyDeaths.objects.values('week_number')
+            annotated = week_numbers.annotate(death_sums=expr)
+            weekly_deaths = annotated.values('week_number', 'death_sums')
+            grouped = {}
+            for week_data in weekly_deaths:
+                week_number = week_data['week_number']
+                if week_number in grouped:
+                    grouped[week_number].append(week_data['death_sums'])
+                else:
+                    grouped[week_number] = [week_data['death_sums']]
+
+            return list(grouped.values())
+
+        weekly_deaths_data = self.from_cache_or_compute(compute, view_id)
+
+        # Ignore transition week 53
+        graph_data = []
+        for i in range(0, 52):
+            graph_data.append({
+                'y': weekly_deaths_data[i],
+                'type': 'box',
+                'name': f"Week {i + 1}"
+            })
+        graph_layout = get_base_layout('Weekly deaths data summarization from 2011 to present')
+        graph_layout['showlegend'] = False
+        return {'graph_layout': graph_layout, 'graph_data': graph_data}
+
     def get_death_age_data(self):
-        age_data = list(CovidDeath.objects.all().values_list('age', flat=True))
+        view_id = int(self.request.GET['graphViewID'])
+
+        def compute():
+            # TODO: will get more complex?
+            return list(CovidDeath.objects.all().values_list('age', flat=True))
+
+        age_data = self.from_cache_or_compute(compute, view_id)
+
         graph_data = [{
             'y': age_data,
             'type': 'box',
@@ -230,16 +285,20 @@ class StatisticsView(generic.TemplateView):
         return {'graph_layout': graph_layout, 'graph_data': graph_data}
 
     def get_cases_by_area(self):
-        area_cases = {}
-        q_object = ~Q(code='CZ999') & ~Q(code='CZZZZ')  # Ignore extra region and unknown region
-        query = NUTS_3_AREA.objects.filter(q_object).annotate(case_count=Count('nuts_4_area__confirmedcase')) \
-            .values('name', 'case_count')
-        for area in query:
-            area_cases[area['name']] = area['case_count']
+        view_id = int(self.request.GET['graphViewID'])
 
+        def compute():
+            q_object = ~Q(code='CZ999') & ~Q(code='CZZZZ')  # Ignore extra region and unknown region
+            area_cases_query = (NUTS_3_AREA.objects.filter(q_object)
+                                .annotate(case_count=Count('nuts_4_area__confirmedcase'))
+                                .values_list('name', 'case_count'))
+
+            return list(map(list, zip(*area_cases_query)))
+
+        area_cases = self.from_cache_or_compute(compute, view_id)
         graph_data = [{
-            'x': list(area_cases.keys()),
-            'y': list(area_cases.values()),
+            'x': area_cases[0],
+            'y': area_cases[1],
             'type': 'bar',
             'name': 'Region Case Counts'
         }]
@@ -249,51 +308,40 @@ class StatisticsView(generic.TemplateView):
         return {'graph_layout': graph_layout, 'graph_data': graph_data}
 
     def get_case_age_distribution(self):
-        age_distribution = cache.get(self.request.GET['action'])
-        # age_distribution = None
-        if age_distribution:
-            male_counts = age_distribution['male_counts']
-            female_counts = age_distribution['female_counts']
-            case_counts_evolution = age_distribution['case_counts_evolution']
-        else:
-            male_cases = ConfirmedCase.objects.filter(gender='M')
-            female_cases = ConfirmedCase.objects.filter(gender='Z')
+        view_id = int(self.request.GET['graphViewID'])
 
-            age_categories = {}
-            age_windows = {}
-            age_windows_incr = {}
-            for lower_bound in range(0, 100, 10):
-                q_object = Q(age__gte=lower_bound) & Q(age__lt=lower_bound + 10)
-                age_categories[f"age{lower_bound}"] = Count('age', filter=q_object)
-                age_windows[f"cumulative_{lower_bound}"] = Window(
-                    expression=Count('age', filter=q_object),
-                    order_by=F('report_date').asc()
-                )
-                age_windows_incr[f"incremental_{lower_bound}"] = Window(
-                    expression=Count('age', filter=q_object),
-                    partition_by=[F'report_date'],
-                    order_by=F('report_date').asc()
-                )
+        def compute():
+            if view_id < 2:
+                # TODO: probably could be done in a single query with some clever annotation use?
+                query_age_categories = {}
+                male_cases = ConfirmedCase.objects.filter(gender='M')
+                female_cases = ConfirmedCase.objects.filter(gender='Z')
+                for lower_bound in range(0, 100, 10):
+                    q_object = Q(age__gte=lower_bound) & Q(age__lt=lower_bound + 10)
+                    query_age_categories[f"age{lower_bound}"] = Count('age', filter=q_object)
 
-            # ConfirmedCase.objects.filter(Q(age__gte=20) & Q(age__lte=30) & Q(report_date__lte=datetime(2020, 3, 6).date())).count()
-            case_counts_in_time = list(ConfirmedCase.objects.annotate(**age_windows, **age_windows_incr)
-                                       .values_list('report_date', *age_windows.keys(), *age_windows_incr.keys())
-                                       .distinct())
+                return {'male': list(male_cases.aggregate(**query_age_categories).values()),
+                        'female': list(female_cases.aggregate(**query_age_categories).values())}
 
-            # Transpose list of lists (columns -> rows)
-            case_counts_evolution = list(map(list, zip(*case_counts_in_time)))
+            else:
+                partition_fields = [F'report_date'] if view_id == 2 else None
+                age_windows = {}
+                for lower_bound in range(0, 100, 10):
+                    q_object = Q(age__gte=lower_bound) & Q(age__lt=lower_bound + 10)
+                    age_windows[f"{lower_bound}"] = Window(
+                        expression=Count('age', filter=q_object),
+                        partition_by=partition_fields,
+                        order_by=F('report_date').asc()
+                    )
+                timeline_data = (ConfirmedCase.objects.annotate(**age_windows)
+                                 .values_list('report_date', *age_windows.keys())
+                                 .distinct())
 
-            male_counts = list(male_cases.aggregate(**age_categories).values())
-            female_counts = list(female_cases.aggregate(**age_categories).values())
-            cache.set(self.request.GET['action'], {
-                'male_counts': male_counts,
-                'female_counts': female_counts,
-                'case_counts_evolution': case_counts_evolution
-            })
+                return list(map(list, zip(*timeline_data)))
 
+        data = self.from_cache_or_compute(compute, view_id)
         age_labels = ['0-9', '10-19', '20-29', '30-39', '40-49', '50-59', '60-69', '70-79', '80-89', '90-99']
 
-        view_id = int(self.request.GET['graphViewID'])
         if view_id < 2:
             age_categories = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90]
             graph_layout = get_base_layout('Age Distribution of Confirmed COVID-19 Cases', barmode='overlay',
@@ -301,17 +349,17 @@ class StatisticsView(generic.TemplateView):
             graph_layout['bargap'] = 0.1
             graph_data = [{
                 'y': age_categories,
-                'x': male_counts,
+                'x': data['male'],
                 'orientation': 'h',
                 'name': 'Men',
                 'hoverinfo': 'x',
                 'type': 'bar',
             }, {
                 'y': age_categories,
-                'x': [-x for x in female_counts],
+                'x': [-x for x in data['female']],
                 'orientation': 'h',
                 'name': 'Women',
-                'text': female_counts,
+                'text': data['female'],
                 'hoverinfo': 'text',
                 'type': 'bar',
             }]
@@ -321,24 +369,17 @@ class StatisticsView(generic.TemplateView):
                 graph_data[0]['x'] = graph_data[1]['x'] = age_categories
                 graph_data[0]['hoverinfo'] = 'y'
                 graph_data[0]['orientation'] = graph_data[1]['orientation'] = 'v'
-                graph_data[0]['y'] = male_counts
-                graph_data[1]['y'] = female_counts
+                graph_data[0]['y'] = data['male']
+                graph_data[1]['y'] = data['female']
 
         else:
-            if view_id == 2:
-                title = "Confirmed Cases - Daily Change"
-                data = case_counts_evolution[11:]
-            else:
-                title = "Confirmed Cases - Cumulative"
-                data = case_counts_evolution[1:11]
-
-            graph_layout = get_base_layout(title, barmode='overlay',
-                                           xtitle='Date', ytitle='Number of Cases')
+            title = "Confirmed Cases - Daily Change" if view_id == 2 else "Confirmed Cases - Cumulative"
+            graph_layout = get_base_layout(title, barmode='overlay', xtitle='Date', ytitle='Number of Cases')
             graph_data = []
-            for age_label, age_category in zip(age_labels, data):
+            for age_label, age_category in zip(age_labels, data[1:]):
                 graph_data.append({
                     'type': 'scatter',
-                    'x': case_counts_evolution[0],
+                    'x': data[0],
                     'y': age_category,
                     'mode': 'lines',
                     'name': age_label
@@ -347,61 +388,79 @@ class StatisticsView(generic.TemplateView):
         return {'graph_layout': graph_layout, 'graph_data': graph_data}
 
     def get_age_average_evolution(self):
-        # cached_data = cache.get(self.request.GET['action'])
-        cached_data = None
-        if cached_data:
-            dates = cached_data['dates']
-            averages = cached_data['averages']
-        else:
-            averages_queryset = ConfirmedCase.objects.annotate(
-                moving_age_avg=Window(
-                    expression=Avg('age'),
-                    # partition_by=[F('report_date')],
-                    order_by=F('report_date').asc(),
-                )
-            ).values('report_date', 'moving_age_avg').distinct()
+        view_id = int(self.request.GET['graphViewID'])
 
-            dates = []
-            averages = []
-            for day in averages_queryset:
-                dates.append(day['report_date'])
-                averages.append(day['moving_age_avg'])
+        def compute():
+            if view_id == 0:
+                annotations = {'cumulative_age_avg': Window(expression=Avg('age'), order_by=F('report_date').asc())}
+                selected_values = ['report_date', 'cumulative_age_avg']
+            elif view_id == 1:
+                annotations = {
+                    'year': ExtractYear('report_date'),
+                    'week': ExtractWeek('report_date'),
+                    'weekly_age_avg': Window(expression=Avg('age'),
+                                             partition_by=[F('week'), F('year')],
+                                             order_by=F('week').asc())
+                }
+                selected_values = ['week', 'weekly_age_avg']
+            else:
+                annotations = {
+                    'daily_age_avg': Window(expression=Avg('age'),
+                                            partition_by=[F('report_date')],
+                                            order_by=F('report_date').asc())
+                }
+                selected_values = ['report_date', 'daily_age_avg']
 
-            cache.set(self.request.GET['action'], {
-                'dates': dates,
-                'averages': averages
-            })
+            queryset = ConfirmedCase.objects.annotate(**annotations).values_list(*selected_values).distinct()
+            return list(map(list, zip(*queryset)))
+
+        data = self.from_cache_or_compute(compute, view_id)
+
+        layouts = {
+            0: get_base_layout('Cumulative Age Averages of COVID-19 Cases', barmode='overlay', xtitle='Date',
+                               ytitle='Cumulative Average'),
+            1: get_base_layout('Weekly Age Averages of COVID-19 Cases', barmode='overlay',
+                               xtitle='Week', ytitle='Weekly Average'),
+            2: get_base_layout('Daily Age Averages of COVID-19 Cases', barmode='overlay',
+                               xtitle='Date', ytitle='Daily Average')
+        }
 
         graph_data = [{
+            'x': data[0],
+            'y': data[1],
             'type': 'scatter',
-            'x': dates,
-            'y': averages,
             'mode': 'lines',
         }]
-        graph_layout = get_base_layout('Age Average Evolution of COVID-19 Cases', barmode='overlay',
-                                       xtitle='Date', ytitle='Average Age to Date')
-        return {'graph_layout': graph_layout, 'graph_data': graph_data}
+        return {'graph_layout': layouts[view_id], 'graph_data': graph_data}
 
     def get_context_data(self, **kwargs):
         self.context = super().get_context_data(**kwargs)
 
-        # count1 = DailyStatistics.objects.death_count(datetime.today() - timedelta(days=10))
-        # count2 = CovidDeath.objects.death_count(datetime.today() - timedelta(days=10))
-
-        expr = F('death_count_1') + F('death_count_2') + F('death_count_3') + F('death_count_4') + F('death_count_5')
-        week_numbers = WeeklyDeaths.objects.values('week_number')
-        annotated = week_numbers.annotate(death_sums=expr)
-        weekly_deaths = annotated.values('week_number', 'death_sums')
-        grouped = {}
-        for week_data in weekly_deaths:
-            week_number = week_data['week_number']
-            if week_number in grouped:
-                grouped[week_number].append(week_data['death_sums'])
-            else:
-                grouped[week_number] = [week_data['death_sums']]
-
-        if grouped:
-            self.context['weekly_deaths'] = json.dumps(grouped)
+        # TODO: avoid using action strings at multiple places, bad for maintainability
+        graph_divs = {
+            'cases_age_distribution_graph': {
+                'tabs': ['Pyramid View', 'Stacked Bar View', 'Daily Change View', 'Cumulative View'],
+                'action': 'get_age_distribution',
+            },
+            'area_cases_graph': {
+                'tabs': ['Bar View', 'TODO'],
+                'action': 'get_area_cases',
+            },
+            'age_average_evolution_graph': {
+                'tabs': ['Cumulative', 'Weekly', 'Daily'],
+                'action': 'get_age_average_evolution',
+            },
+            'deaths_age_graph': {
+                'tabs': ['Default'],
+                'action': 'get_death_age_data',
+            },
+            'weekly_deaths_graph': {
+                'tabs': ['Default'],
+                'action': 'get_weekly_deaths',
+            }
+        }
+        self.context['graph_divs'] = graph_divs
+        self.context['action_url'] = self.request.path_info
 
         return self.context
 

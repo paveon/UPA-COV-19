@@ -232,4 +232,33 @@ article p {
 
 .graph-view-wrapper {
     height: 500px;
+    position: relative;
+}
+
+.loading-div {
+    /*display: none;*/
+    position: absolute; /* Stay in place */
+    z-index: 1; /* Sit on top */
+    top: 50%;
+    left: 50%;
+    width: 300px;
+    height: 150px;
+    transform: translate(-50%, -50%);
+    /*overflow: auto; !* Enable scroll if needed *!*/
+    background-color: rgb(0, 0, 0); /* Black w/ opacity */
+    border: 1px solid white;
+    border-radius: 15px;
+    opacity: 0.85;
+    transition: opacity 0.3s ease-in-out;
+}
+
+.hidden {
+    opacity: 0;
+}
+
+.loading-div h2 {
+    text-align: center;
+    color: white;
+    line-height: 150px;
+    margin: 0;
 }

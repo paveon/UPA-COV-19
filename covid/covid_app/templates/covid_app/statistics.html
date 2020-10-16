@@ -88,7 +88,10 @@
                 graphViewID: selectedTab.index()
             };
 
+            let loading_div = $('.loading-div', graphDiv.parent());
+            loading_div.removeClass('hidden')
             baseGet(targetUrl, getData, function (data, status, xhr) {
+                loading_div.addClass('hidden');
                 if (graphDiv.children().length > 0) {
                     Plotly.react(graphDivID, data['graph_data'], data['graph_layout'], {responsive: true});
                 } else {
@@ -103,34 +106,12 @@
             let traces = [];
             let layout = null;
 
-            {#            {% if weekly_deaths %}#}
-            {#                let weekly_deaths_data = JSON.parse("{{weekly_deaths|escapejs}}")#}
-            {#                traces = []#}
-            {#                for (let i = 0; i < 52; i++) {#}
-            {#                    traces.push({#}
-            {#                        y: weekly_deaths_data[i + 1],#}
-            {#                        type: 'box',#}
-            {#                        name: `Week ${i + 1}`#}
-            {#                    })#}
-            {#                }#}
-            {#                layout = {#}
-            {#                    title: 'Weekly deaths data summarization from 2011 to present',#}
-            {#                    paper_bgcolor: 'rgb(243, 243, 243)',#}
-            {#                    plot_bgcolor: 'rgb(243, 243, 243)',#}
-            {#                    showlegend: false,#}
-            {#                    autosize: true#}
-            {#                };#}
-            {##}
-            {#                Plotly.newPlot('weekly_deaths_graph', traces, layout, {responsive: true});#}
-            {#resizeObserver.observe($('#weekly_deaths_graph')[0]);#}
-            {#            {% endif %}#}
 
             // TODO: This is not a great idea, will be slow as hell later on. Would be nice to create some
             // TODO: kind of menu to switch which graph to load through AJAX maybe? Dunno
-            selectGraphView(null, 'cases_age_distribution_graph');
-            selectGraphView(null, 'area_cases_graph');
-            selectGraphView(null, 'age_average_evolution_graph');
-            selectGraphView(null, 'deaths_age_graph');
+            {% for div_id, div_data in graph_divs.items %}
+                selectGraphView(null, '{{ div_id }}');
+            {% endfor %}
         });
 
     </script>
@@ -192,91 +173,26 @@
                 {% endif %}
             </div>
 
-            <!---
-            TODO: this is dumb AF, create template and pass
-            TODO: necessary data through context to auto-generate all graph divs, will be easier to maintain
-            -->
-            <div class="graph-view-wrapper w3-section">
-                <div class="graph-view-tabs">
-                    <button class=""
-                            onclick="selectGraphView(event, 'cases_age_distribution_graph')">
-                        Pyramid View
-                    </button>
-                    <button class=""
-                            onclick="selectGraphView(event, 'cases_age_distribution_graph')">
-                        Stacked Bar View
-                    </button>
-                    <button class=""
-                            onclick="selectGraphView(event, 'cases_age_distribution_graph')">
-                        Daily Change View
-                    </button>
-                    <button class=""
-                            onclick="selectGraphView(event, 'cases_age_distribution_graph')">
-                        Cumulative View
-                    </button>
-                </div>
-                <div class="graph-container" id="cases_age_distribution_graph"
-                     data-action="get_age_distribution"
-                     data-url="{% url 'covid_app:case_stats' %}">
-                </div>
-            </div>
+            {% for div_id, div_data in graph_divs.items %}
+                <div class="graph-view-wrapper w3-section">
+                    <div class="graph-view-tabs">
+                        {% for tab_name in div_data.tabs %}
+                            <button onclick="selectGraphView(event, '{{ div_id }}')"
+                                    {% if div_data.tabs|length == 1 %}disabled{% endif %}>
+                                {{ tab_name }}
+                            </button>
+                        {% endfor %}
+                    </div>
+                    <div class="graph-container" id="{{ div_id }}"
+                         data-action="{{ div_data.action }}"
+                         data-url="{{ action_url }}">
 
-            <div class="graph-view-wrapper w3-section">
-                <div class="graph-view-tabs">
-                    <button class="" onclick="selectGraphView(event, 'area_cases_graph')">
-                        Bar View
-                    </button>
-                    <button class="" onclick="selectGraphView(event, 'area_cases_graph')">
-                        TODO
-                    </button>
+                    </div>
+                    <div class="loading-div">
+                        <h2>Loading...</h2>
+                    </div>
                 </div>
-                <div class="graph-container" id="area_cases_graph"
-                     data-action="get_area_cases"
-                     data-url="{% url 'covid_app:case_stats' %}">
-                </div>
-            </div>
-
-            <div class="graph-view-wrapper w3-section">
-                <div class="graph-view-tabs">
-                    <button class="" onclick="selectGraphView(event, 'age_average_evolution_graph')" disabled>
-                        Default
-                    </button>
-                </div>
-                <div class="graph-container" id="age_average_evolution_graph"
-                     data-action="get_age_average_evolution"
-                     data-url="{% url 'covid_app:case_stats' %}">
-                </div>
-            </div>
-
-            <div class="graph-view-wrapper w3-section">
-                <div class="graph-view-tabs">
-                    <button class="" onclick="selectGraphView(event, 'deaths_age_graph')" disabled>
-                        Default
-                    </button>
-                </div>
-                <div class="graph-container" id="deaths_age_graph"
-                     data-action="get_death_age_data"
-                     data-url="{% url 'covid_app:case_stats' %}">
-                </div>
-            </div>
-
-
-            <div class="graph-view-wrapper w3-section">
-                <div class="graph-view-tabs">
-                    <button class="" onclick="selectGraphView(event, 'deaths_age_graph')" disabled>
-                        Default
-                    </button>
-                </div>
-                <div class="graph-container" id="deaths_age_graph"
-                     data-action="get_death_age_data"
-                     data-url="{% url 'covid_app:case_stats' %}">
-                </div>
-            </div>
-
-            {#            {% if weekly_deaths %}#}
-            {#                <div class="w3-section" style="height: 500px;" id="weekly_deaths_graph">#}
-            {#                </div>#}
-            {#            {% endif %}#}
+            {% endfor %}
         </div>
     </div>
 
