@@ -216,6 +216,7 @@ class StatisticsView(generic.TemplateView):
             'get_age_distribution': self.get_case_age_distribution,
             'get_area_cases': self.get_cases_by_area,
             'get_state_cases': self.get_cases_by_state,
+            'get_testing_statistics': self.get_testing_statistics,
             'get_age_average_evolution': self.get_age_average_evolution,
             'get_death_age_data': self.get_death_age_data,
             'get_weekly_deaths': self.get_weekly_deaths,
@@ -356,6 +357,28 @@ class StatisticsView(generic.TemplateView):
 
         #graph_layout = get_base_layout('COVID-19 Cases Confirmed for Czech Inhabitans in Abroad',xtitle='State', ytitle='Number of Cases')
         return {'graph_layout': graph_layout, 'graph_data': graph_data}
+
+    def get_testing_statistics(self):
+        view_id = int(self.request.GET['graphViewID'])
+        print(f"ViewID: {view_id}")
+
+        def compute():
+            testing_query = DailyStatistics.objects.values_list('date', 'test_count')
+            print(f"Performed tests in day: {testing_query}")
+            return list(map(list, zip(*testing_query)))
+
+        test_statistics = self.from_cache_or_compute(compute, view_id)
+
+        graph_data = [{
+            'x': test_statistics[0],
+            'y': test_statistics[1],
+            'type': 'line',
+            'name': 'Development of Performed Tests'
+        }]
+
+        graph_layout = get_base_layout('Development of Performed COVID-19 Tests', xtitle='Date', ytitle='Number of Tests')
+        return {'graph_layout': graph_layout, 'graph_data': graph_data}
+
 
     def get_case_age_distribution(self):
         view_id = int(self.request.GET['graphViewID'])
@@ -499,6 +522,10 @@ class StatisticsView(generic.TemplateView):
             'state_cases_graph': {
                 'tabs': ['Bar View', 'Pie View'],
                 'action': 'get_state_cases',
+            },
+            'testing_statistics_graph': {
+                'tabs': ['Line View'],
+                'action': 'get_testing_statistics',
             },
             'age_average_evolution_graph': {
                 'tabs': ['Cumulative', 'Weekly', 'Daily'],
