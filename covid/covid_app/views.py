@@ -215,6 +215,7 @@ class StatisticsView(generic.TemplateView):
         self.get_actions = {
             'get_age_distribution': self.get_case_age_distribution,
             'get_area_cases': self.get_cases_by_area,
+            'get_state_cases': self.get_cases_by_state,
             'get_age_average_evolution': self.get_age_average_evolution,
             'get_death_age_data': self.get_death_age_data,
             'get_weekly_deaths': self.get_weekly_deaths,
@@ -305,6 +306,55 @@ class StatisticsView(generic.TemplateView):
 
         graph_layout = get_base_layout('Region Counts of COVID-19 Cases Confirmed by Regional Hygiene Office',
                                        xtitle='Region', ytitle='Number of Cases')
+        return {'graph_layout': graph_layout, 'graph_data': graph_data}
+
+    def get_cases_by_state(self):
+        view_id = int(self.request.GET['graphViewID'])
+        print(f"ViewID: {view_id}")
+
+        def compute():
+            q_object = ~Q(code='CZ') # Ignore Czech Republic
+            state_cases_query = NUTS_0_AREA.objects.filter(q_object).annotate(case_count=Count('confirmedcase')).order_by('-case_count').values_list('name', 'case_count')
+
+            return list(map(list, zip(*state_cases_query)))
+
+        state_cases = self.from_cache_or_compute(compute, view_id)
+
+        # in both graphs ignore foreign states with no confirmed Czech inhabitans
+
+        if (view_id == 0):
+
+            graph_data = [{
+                'x': state_cases[0],
+                'y': state_cases[1],
+                'type': 'bar',
+                'transforms': [{
+                'type': 'filter',
+                'target': 'y',
+                'operation': '>',
+                'value': 0
+                }],
+                'name': 'State Case Counts'
+                }]
+            graph_layout = get_base_layout('COVID-19 Cases Confirmed for Czech Inhabitans in Abroad', ytitle='Number of Cases')
+
+        elif (view_id == 1):
+            graph_data = [{
+                'labels': state_cases[0],
+                'values': state_cases[1],
+                'type': 'pie',
+                'transforms': [{
+                'type': 'filter',
+                'target': 'values',
+                'operation': '>',
+                'value': 49
+                }],
+                'name': 'Top State Case Counts'
+                }]
+
+            graph_layout = get_base_layout('Foreign States With At Least 50 Confirmed Czech Inhabitans',xtitle='State', ytitle='Number of Cases')
+
+        #graph_layout = get_base_layout('COVID-19 Cases Confirmed for Czech Inhabitans in Abroad',xtitle='State', ytitle='Number of Cases')
         return {'graph_layout': graph_layout, 'graph_data': graph_data}
 
     def get_case_age_distribution(self):
@@ -445,6 +495,10 @@ class StatisticsView(generic.TemplateView):
             'area_cases_graph': {
                 'tabs': ['Bar View', 'TODO'],
                 'action': 'get_area_cases',
+            },
+            'state_cases_graph': {
+                'tabs': ['Bar View', 'Pie View'],
+                'action': 'get_state_cases',
             },
             'age_average_evolution_graph': {
                 'tabs': ['Cumulative', 'Weekly', 'Daily'],
