@@ -150,6 +150,7 @@ class StatisticsView(generic.TemplateView):
             'deaths_cumulative': 'kumulativni_pocet_umrti'
         }
 
+
     def update_data(self):
         self.cache_regions()
         models_to_update = [
@@ -206,6 +207,7 @@ class StatisticsView(generic.TemplateView):
         self.daily_stats_mapping = None
         self.recovered_mapping = None
 
+
         self.post_actions = {
             'populate_area_tables': self.populate_area_tables,
             'import_data': self.import_data,
@@ -220,6 +222,7 @@ class StatisticsView(generic.TemplateView):
             'get_age_average_evolution': self.get_age_average_evolution,
             'get_death_age_data': self.get_death_age_data,
             'get_weekly_deaths': self.get_weekly_deaths,
+            'get_impact_covid': self.get_impact_covid,
         }
         # print(f"Existing DBs: {db_client.list_database_names()}")
 
@@ -285,6 +288,79 @@ class StatisticsView(generic.TemplateView):
         graph_layout = get_base_layout('Age of Dead Patients for COVID-19')
         graph_layout['showlegend'] = False
         return {'graph_layout': graph_layout, 'graph_data': graph_data}
+
+    def get_impact_covid(self):
+        view_id = int(self.request.GET['graphViewID'])
+
+        def compute_cases():
+            if view_id == 0:
+                annotations = {'confirmed_case_count': Window(expression=Count('report_date'), order_by=F('report_date').asc())}
+                selected_values = ['report_date', 'confirmed_case_count']
+                conf_cases = ConfirmedCase.objects.annotate(**annotations).values_list(*selected_values).distinct()
+            elif view_id == 1:
+                conf_cases = DailyStatistics.objects.values_list('date', 'confirmed_case_count')
+            return list(map(list, zip(*conf_cases)))
+
+        def compute_deaths():
+            if view_id == 0:
+                daily_deaths = DailyStatistics.objects.values_list('date', 'deaths_cumulative');
+            elif view_id == 1:
+                daily_deaths = CovidDeath.objects.order_by('date_of_death').values_list('date_of_death').annotate(Count('date_of_death'));
+            return list(map(list, zip(*daily_deaths)))
+
+        def compute_impact():
+            if view_id == 0:
+                annotations = {'confirmed_case_count': Window(expression=Count('report_date'), order_by=F('report_date').asc())}
+                selected_values = ['report_date', 'confirmed_case_count']
+                conf_cases = ConfirmedCase.objects.annotate(**annotations).values_list(*selected_values).distinct()
+                daily_deaths = DailyStatistics.objects.values_list('date', 'deaths_cumulative');
+            elif view_id == 1:
+                daily_deaths = CovidDeath.objects.order_by('date_of_death').values_list('date_of_death').annotate(Count('date_of_death'))
+                conf_cases = DailyStatistics.objects.values_list('date', 'confirmed_case_count')
+            annotations = []
+            for cases in conf_cases:
+                date_from_case = cases[0]
+                if view_id == 1 and daily_deaths.filter(date_of_death=date_from_case):
+                    query_deaths = list(daily_deaths.filter(date_of_death=date_from_case))
+                    count_impact = query_deaths[0][1] / cases[1]
+                    annotations.append([cases[0],count_impact])
+                elif view_id == 0 and daily_deaths.filter(date=date_from_case):
+                    query_deaths = list(daily_deaths.filter(date=date_from_case))
+                    count_impact = query_deaths[0][1] / cases[1]
+                    annotations.append([cases[0],count_impact])
+                else:
+                    annotations.append([cases[0],0])
+            return list(map(list, zip(*annotations)))
+                
+
+        death_stat = compute_deaths();
+        test_statistics = compute_cases();
+        impact_covid = self.from_cache_or_compute(compute_impact, view_id)
+
+        graph_layouts = {
+            0: get_base_layout('Cumulative Impact of Covid', barmode='overlay', xtitle='Date',
+                               ytitle='Number'),
+            1: get_base_layout('Daily Impact of Covid', barmode='overlay',
+                               xtitle='Date', ytitle='Number'),
+        }
+        graph_data = [{
+            'x': test_statistics[0],
+            'y': test_statistics[1],
+            'type': 'line',
+            'name': 'Cases'
+        },
+        {
+            'x': death_stat[0],
+            'y': death_stat[1],
+            'type': 'line',
+            'name': 'Deaths'
+        },{
+            'x': impact_covid[0],
+            'y': impact_covid[1],
+            'type': 'line',
+            'name': 'Impact'
+        }]
+        return {'graph_layout': graph_layouts[view_id], 'graph_data': graph_data}
 
     def get_cases_by_area(self):
         view_id = int(self.request.GET['graphViewID'])
@@ -538,6 +614,10 @@ class StatisticsView(generic.TemplateView):
             'weekly_deaths_graph': {
                 'tabs': ['Default'],
                 'action': 'get_weekly_deaths',
+            },
+            'impact_covid': {
+                'tabs': ['Cumulative','Daily'],
+                'action': 'get_impact_covid',
             }
         }
         self.context['graph_divs'] = graph_divs
