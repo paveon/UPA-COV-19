@@ -217,8 +217,9 @@ class StatisticsView(generic.TemplateView):
         self.get_actions = {
             'get_age_distribution': self.get_case_age_distribution,
             'get_area_cases': self.get_cases_by_area,
+            'get_area_deaths': self.get_deaths_by_area,
             'get_state_cases': self.get_cases_by_state,
-            'get_testing_statistics': self.get_testing_statistics,
+            'get_daily_statistics': self.get_daily_statistics,
             'get_age_average_evolution': self.get_age_average_evolution,
             'get_death_age_data': self.get_death_age_data,
             'get_weekly_deaths': self.get_weekly_deaths,
@@ -331,7 +332,7 @@ class StatisticsView(generic.TemplateView):
                 else:
                     annotations.append([cases[0],0])
             return list(map(list, zip(*annotations)))
-                
+
 
         death_stat = compute_deaths();
         test_statistics = compute_cases();
@@ -374,15 +375,56 @@ class StatisticsView(generic.TemplateView):
             return list(map(list, zip(*area_cases_query)))
 
         area_cases = self.from_cache_or_compute(compute, view_id)
-        graph_data = [{
-            'x': area_cases[0],
-            'y': area_cases[1],
-            'type': 'bar',
-            'name': 'Region Case Counts'
-        }]
+
+        if (view_id == 0):
+            graph_data = [{
+                'x': area_cases[0],
+                'y': area_cases[1],
+                'type': 'bar',
+                'name': 'Region Case Counts'
+            }]
+
+        if (view_id == 1):
+            graph_data = [{
+                'labels': area_cases[0],
+                'values': area_cases[1],
+                'type': 'pie',
+                'name': 'Region Case Counts'
+            }]
 
         graph_layout = get_base_layout('Region Counts of COVID-19 Cases Confirmed by Regional Hygiene Office',
                                        xtitle='Region', ytitle='Number of Cases')
+        return {'graph_layout': graph_layout, 'graph_data': graph_data}
+
+    def get_deaths_by_area(self):
+        view_id = int(self.request.GET['graphViewID'])
+
+        def compute():
+            q_object = ~Q(code='CZ999') & ~Q(code='CZZZZ')  # Ignore extra region and unknown region
+            area_deaths_query = (NUTS_3_AREA.objects.filter(q_object).annotate(death_count=Count('nuts_4_area__coviddeath')).values_list('name', 'death_count'))
+
+            return list(map(list, zip(*area_deaths_query)))
+
+        area_deaths = self.from_cache_or_compute(compute, view_id)
+
+        if (view_id == 0):
+            graph_data = [{
+                'x': area_deaths[0],
+                'y': area_deaths[1],
+                'type': 'bar',
+                'name': 'Region Death Counts'
+            }]
+
+        if (view_id == 1):
+            graph_data = [{
+                'labels': area_deaths[0],
+                'values': area_deaths[1],
+                'type': 'pie',
+                'name': 'Region Death Counts'
+            }]
+
+        graph_layout = get_base_layout('Region Counts of COVID-19 Deaths',
+                                               xtitle='Region', ytitle='Number of Deaths')
         return {'graph_layout': graph_layout, 'graph_data': graph_data}
 
     def get_cases_by_state(self):
@@ -434,25 +476,42 @@ class StatisticsView(generic.TemplateView):
         #graph_layout = get_base_layout('COVID-19 Cases Confirmed for Czech Inhabitans in Abroad',xtitle='State', ytitle='Number of Cases')
         return {'graph_layout': graph_layout, 'graph_data': graph_data}
 
-    def get_testing_statistics(self):
+    def get_daily_statistics(self):
         view_id = int(self.request.GET['graphViewID'])
-        print(f"ViewID: {view_id}")
 
-        def compute():
-            testing_query = DailyStatistics.objects.values_list('date', 'test_count')
-            print(f"Performed tests in day: {testing_query}")
-            return list(map(list, zip(*testing_query)))
+        if (view_id == 0):
 
-        test_statistics = self.from_cache_or_compute(compute, view_id)
+            def compute():
+                testing_query = DailyStatistics.objects.values_list('date', 'test_count')
+                print(f"Performed tests in day: {testing_query}")
+                return list(map(list, zip(*testing_query)))
 
-        graph_data = [{
-            'x': test_statistics[0],
-            'y': test_statistics[1],
-            'type': 'line',
-            'name': 'Development of Performed Tests'
-        }]
+            test_statistics = self.from_cache_or_compute(compute, view_id)
 
-        graph_layout = get_base_layout('Development of Performed COVID-19 Tests', xtitle='Date', ytitle='Number of Tests')
+            graph_data = [{
+                'x': test_statistics[0],
+                'y': test_statistics[1],
+                'type': 'line',
+                'name': 'Development of Performed Tests'
+                }]
+
+            graph_layout = get_base_layout('Development of Performed COVID-19 Tests', xtitle='Date', ytitle='Number of Tests')
+
+        if (view_id == 1):
+                def compute():
+                    recovered_cases_query = DailyStatistics.objects.values_list('date', 'recovered_cumulative')
+                    return list(map(list, zip(*recovered_cases_query)))
+
+                recovered_cases = self.from_cache_or_compute(compute, view_id)
+
+                graph_data = [{
+                'x': recovered_cases[0],
+                'y': recovered_cases[1],
+                'type': 'line',
+                'name': 'Development of Recovered Cases'
+                }]
+
+                graph_layout = get_base_layout('Development of COVID-19 Recovered Cases', xtitle='Date', ytitle='Cumulative Number of Recovered Cases')
         return {'graph_layout': graph_layout, 'graph_data': graph_data}
 
 
@@ -592,16 +651,20 @@ class StatisticsView(generic.TemplateView):
                 'action': 'get_age_distribution',
             },
             'area_cases_graph': {
-                'tabs': ['Bar View', 'TODO'],
+                'tabs': ['Bar View', 'Pie View'],
                 'action': 'get_area_cases',
+            },
+            'area_deaths_graph': {
+                'tabs': ['Bar View', 'Pie View'],
+                'action': 'get_area_deaths',
             },
             'state_cases_graph': {
                 'tabs': ['Bar View', 'Pie View'],
                 'action': 'get_state_cases',
             },
-            'testing_statistics_graph': {
-                'tabs': ['Line View'],
-                'action': 'get_testing_statistics',
+            'daily_statistics_graph': {
+                'tabs': ['Line View' , 'Line View'],
+                'action': 'get_daily_statistics',
             },
             'age_average_evolution_graph': {
                 'tabs': ['Cumulative', 'Weekly', 'Daily'],
