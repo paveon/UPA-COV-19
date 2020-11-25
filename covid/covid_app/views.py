@@ -268,7 +268,7 @@ class StatisticsView(generic.TemplateView):
                 'type': 'box',
                 'name': f"Week {i + 1}"
             })
-        graph_layout = get_base_layout('Weekly deaths data summarization from 2011 to present')
+        graph_layout = get_base_layout('Weekly Deaths Data Summarization from 2011 to Present')
         graph_layout['showlegend'] = False
         return {'graph_layout': graph_layout, 'graph_data': graph_data}
 
@@ -341,7 +341,7 @@ class StatisticsView(generic.TemplateView):
         graph_layouts = {
             0: get_base_layout('Cumulative Impact of Covid', barmode='overlay', xtitle='Date',
                                ytitle='Number'),
-            1: get_base_layout('Daily Impact of Covid', barmode='overlay',
+            1: get_base_layout('Daily Impact of COVID-19', barmode='overlay',
                                xtitle='Date', ytitle='Number'),
         }
         graph_data = [{
@@ -647,7 +647,7 @@ class StatisticsView(generic.TemplateView):
         # TODO: avoid using action strings at multiple places, bad for maintainability
         graph_divs = {
             'cases_age_distribution_graph': {
-                'tabs': ['Pyramid View', 'Stacked Bar View', 'Daily Change View', 'Cumulative View'],
+                'tabs': ['Pyramid View', 'Stacked Bar View'],
                 'action': 'get_age_distribution',
             },
             'area_cases_graph': {
@@ -666,16 +666,12 @@ class StatisticsView(generic.TemplateView):
                 'tabs': ['Line View' , 'Line View'],
                 'action': 'get_daily_statistics',
             },
-            'age_average_evolution_graph': {
-                'tabs': ['Cumulative', 'Weekly', 'Daily'],
-                'action': 'get_age_average_evolution',
-            },
             'deaths_age_graph': {
-                'tabs': ['Default'],
+                'tabs': ['Box View'],
                 'action': 'get_death_age_data',
             },
             'weekly_deaths_graph': {
-                'tabs': ['Default'],
+                'tabs': ['Box View'],
                 'action': 'get_weekly_deaths',
             },
             'impact_covid': {
