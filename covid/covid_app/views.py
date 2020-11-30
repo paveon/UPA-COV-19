@@ -224,6 +224,8 @@ class StatisticsView(generic.TemplateView):
             'get_death_age_data': self.get_death_age_data,
             'get_weekly_deaths': self.get_weekly_deaths,
             'get_impact_covid': self.get_impact_covid,
+            'get_weekly_deaths_history': self.get_weekly_deaths_history,
+            'get_comparison_covid_deaths': self.get_comparison_covid_deaths,
         }
         # print(f"Existing DBs: {db_client.list_database_names()}")
 
@@ -271,6 +273,79 @@ class StatisticsView(generic.TemplateView):
         graph_layout = get_base_layout('Weekly Deaths Data Summarization from 2011 to Present')
         graph_layout['showlegend'] = False
         return {'graph_layout': graph_layout, 'graph_data': graph_data}
+
+    def get_weekly_deaths_history(self):
+        view_id = int(self.request.GET['graphViewID'])
+
+        def compute():
+            expr = (F('death_count_1') + F('death_count_2') + F('death_count_3') +
+                    F('death_count_4') + F('death_count_5'))
+
+            weekly_deaths_history_query = (WeeklyDeaths.objects.values('week_number').filter(Q(year=2011)).annotate(death_sums=expr).values_list('week_number', 'death_sums'))
+            weekly_deaths_2019_query = (WeeklyDeaths.objects.values('week_number').filter(Q(year=2019)).annotate(death_sums=expr).values_list('week_number', 'death_sums'))
+            weekly_deaths_2020_query = (WeeklyDeaths.objects.values('week_number').filter(Q(year=2020)).annotate(death_sums=expr).values_list('week_number', 'death_sums'))
+            return list(map(list, zip(*weekly_deaths_history_query))),list(map(list, zip(*weekly_deaths_2019_query))), list(map(list, zip(*weekly_deaths_2020_query)))
+
+
+        weekly_deaths_history = self.from_cache_or_compute(compute, view_id)[0]
+        weekly_deaths_2019 = self.from_cache_or_compute(compute, view_id)[1]
+        weekly_deaths_2020 = self.from_cache_or_compute(compute, view_id)[2]
+
+        graph_data = [{
+            'x': weekly_deaths_history[0],
+            'y': weekly_deaths_history[1],
+            'type': 'line',
+            'name': '2011'
+            },
+            {
+            'x': weekly_deaths_2019[0],
+            'y': weekly_deaths_2019[1],
+            'type': 'line',
+            'name': '2019'
+            },
+            {
+            'x': weekly_deaths_2020[0],
+            'y': weekly_deaths_2020[1],
+            'type': 'line',
+            'name': '2020 (year of pandemic)'
+            }
+            ]
+
+        graph_layout = get_base_layout('Comparision of Weekly Deaths for 2011, 2019 and 2020 (year of pandemic)', xtitle='Week of Year', ytitle='Number of Deaths for Week')
+        graph_layout['showlegend'] = True
+        return {'graph_layout': graph_layout, 'graph_data': graph_data}
+
+    def get_comparison_covid_deaths(self):
+        view_id = int(self.request.GET['graphViewID'])
+
+        def compute():
+
+            expr = (F('death_count_1') + F('death_count_2') + F('death_count_3') +
+                    F('death_count_4') + F('death_count_5'))
+
+            weekly_deaths_2020_query = (WeeklyDeaths.objects.values('week_number').filter(Q(year=2020)).annotate(death_sums=expr).aggregate(Sum('death_sums')))
+            covid_deaths_query = CovidOverview.objects.values('total_deaths').aggregate(Sum('total_deaths'))
+            return weekly_deaths_2020_query, covid_deaths_query
+
+        weekly_deaths_2020_dict = self.from_cache_or_compute(compute, view_id)[0]
+        covid_deaths_dict = self.from_cache_or_compute(compute, view_id)[1]
+
+        total_deaths_2020 = int(weekly_deaths_2020_dict["death_sums__sum"])
+        total_covid_deaths = int(covid_deaths_dict["total_deaths__sum"])
+        deaths_not_covid = total_deaths_2020 - total_covid_deaths
+
+        graph_data = [
+            {
+            'labels': ["Deaths to COVID-19", "Other Deaths"],
+            'values': [total_covid_deaths, deaths_not_covid],
+            'type': 'pie',
+            }
+            ]
+
+        graph_layout = get_base_layout('Proportion of COVID-19 Deaths to All Deaths in 2020 for the Czech Republic')
+        graph_layout['showlegend'] = True
+        return {'graph_layout': graph_layout, 'graph_data': graph_data}
+
 
     def get_death_age_data(self):
         view_id = int(self.request.GET['graphViewID'])
@@ -429,7 +504,6 @@ class StatisticsView(generic.TemplateView):
 
     def get_cases_by_state(self):
         view_id = int(self.request.GET['graphViewID'])
-        print(f"ViewID: {view_id}")
 
         def compute():
             q_object = ~Q(code='CZ') # Ignore Czech Republic
@@ -483,7 +557,6 @@ class StatisticsView(generic.TemplateView):
 
             def compute():
                 testing_query = DailyStatistics.objects.values_list('date', 'test_count')
-                print(f"Performed tests in day: {testing_query}")
                 return list(map(list, zip(*testing_query)))
 
             test_statistics = self.from_cache_or_compute(compute, view_id)
@@ -674,10 +747,18 @@ class StatisticsView(generic.TemplateView):
                 'tabs': ['Box View'],
                 'action': 'get_weekly_deaths',
             },
+            'get_deaths_graph_history': {
+                'tabs': ['Line View'],
+                'action': 'get_weekly_deaths_history',
+            },
             'impact_covid': {
                 'tabs': ['Cumulative','Daily'],
                 'action': 'get_impact_covid',
-            }
+            },
+            'get_comparison_covid_deaths': {
+                'tabs': ['Pie View'],
+                'action': 'get_comparison_covid_deaths',
+            },
         }
         self.context['graph_divs'] = graph_divs
         self.context['action_url'] = self.request.path_info
