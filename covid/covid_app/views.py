@@ -373,14 +373,14 @@ class StatisticsView(generic.TemplateView):
                 annotations = {'confirmed_case_count': Window(expression=Count('report_date'), order_by=F('report_date').asc())}
                 selected_values = ['report_date', 'confirmed_case_count']
                 conf_cases = ConfirmedCase.objects.annotate(**annotations).values_list(*selected_values).distinct()
-            elif view_id == 1:
+            elif view_id == 1 or view_id == 2:
                 conf_cases = DailyStatistics.objects.values_list('date', 'confirmed_case_count')
             return list(map(list, zip(*conf_cases)))
 
         def compute_deaths():
             if view_id == 0:
                 daily_deaths = DailyStatistics.objects.values_list('date', 'deaths_cumulative');
-            elif view_id == 1:
+            elif view_id == 1 or view_id == 2:
                 daily_deaths = CovidDeath.objects.order_by('date_of_death').values_list('date_of_death').annotate(Count('date_of_death'));
             return list(map(list, zip(*daily_deaths)))
 
@@ -390,13 +390,13 @@ class StatisticsView(generic.TemplateView):
                 selected_values = ['report_date', 'confirmed_case_count']
                 conf_cases = ConfirmedCase.objects.annotate(**annotations).values_list(*selected_values).distinct()
                 daily_deaths = DailyStatistics.objects.values_list('date', 'deaths_cumulative');
-            elif view_id == 1:
+            elif view_id == 1 or view_id == 2:
                 daily_deaths = CovidDeath.objects.order_by('date_of_death').values_list('date_of_death').annotate(Count('date_of_death'))
                 conf_cases = DailyStatistics.objects.values_list('date', 'confirmed_case_count')
             annotations = []
             for cases in conf_cases:
                 date_from_case = cases[0]
-                if view_id == 1 and daily_deaths.filter(date_of_death=date_from_case):
+                if (view_id == 1 or view_id == 2) and daily_deaths.filter(date_of_death=date_from_case):
                     query_deaths = list(daily_deaths.filter(date_of_death=date_from_case))
                     count_impact = query_deaths[0][1] / cases[1]
                     annotations.append([cases[0],count_impact])
@@ -416,9 +416,23 @@ class StatisticsView(generic.TemplateView):
         graph_layouts = {
             0: get_base_layout('Cumulative Impact of Covid', barmode='overlay', xtitle='Date',
                                ytitle='Number'),
-            1: get_base_layout('Daily Impact of COVID-19', barmode='overlay',
+            1: get_base_layout('Number of Cases and Deaths per day', barmode='overlay',
                                xtitle='Date', ytitle='Number'),
+            2: get_base_layout('Ratio of Daily Deaths and Daily Cases (Daily Deaths / Daily Cases)', barmode='overlay',
+                                                  xtitle='Date', ytitle='Number'),
         }
+
+        if (view_id == 2):
+            graph_data = [
+            {
+                'x': impact_covid[0],
+                'y': impact_covid[1],
+                'type': 'line',
+                'name': 'Impact'
+            }]
+
+            return {'graph_layout': graph_layouts[view_id], 'graph_data': graph_data}
+
         graph_data = [{
             'x': test_statistics[0],
             'y': test_statistics[1],
@@ -430,11 +444,6 @@ class StatisticsView(generic.TemplateView):
             'y': death_stat[1],
             'type': 'line',
             'name': 'Deaths'
-        },{
-            'x': impact_covid[0],
-            'y': impact_covid[1],
-            'type': 'line',
-            'name': 'Impact'
         }]
         return {'graph_layout': graph_layouts[view_id], 'graph_data': graph_data}
 
@@ -752,7 +761,7 @@ class StatisticsView(generic.TemplateView):
                 'action': 'get_weekly_deaths_history',
             },
             'impact_covid': {
-                'tabs': ['Cumulative','Daily'],
+                'tabs': ['    ','Line View', 'Line View'],
                 'action': 'get_impact_covid',
             },
             'get_comparison_covid_deaths': {
