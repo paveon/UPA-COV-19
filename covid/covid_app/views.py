@@ -79,6 +79,26 @@ def get_base_layout(title, xtitle=None, ytitle=None, barmode=None, xtickvals=Non
     }
 
 
+def get_average_deaths_by_week():
+    expr = (F('death_count_1') + F('death_count_2') + F('death_count_3') +
+            F('death_count_4') + F('death_count_5'))
+
+    weekly_deaths_query = list(WeeklyDeaths.objects.values('week_number')
+                               .filter(Q(year__gte=2011) & Q(year__lte=2019) & Q(week_number__lt=53))
+                               .annotate(death_sums=expr)
+                               .values_list('week_number', 'death_sums'))
+    grouped = {}
+    for week_data in weekly_deaths_query:
+        week_number = week_data[0]
+
+        if week_number in grouped:
+            grouped[week_number] += week_data[1]
+        else:
+            grouped[week_number] = week_data[1]
+
+    return list(map(lambda x: x / 9, grouped.values()))
+
+
 @method_decorator(never_cache, name='dispatch')
 class StatisticsView(generic.TemplateView):
     template_name = 'covid_app/statistics.html'
@@ -235,6 +255,8 @@ class StatisticsView(generic.TemplateView):
             'get_death_age_data': self.get_death_age_data,
             'get_weekly_deaths': self.get_weekly_deaths,
             'get_impact_covid': self.get_impact_covid,
+            'get_daily_death_to_case_ratio': self.get_daily_death_to_case_ratio,
+            'get_daily_deaths_and_cases': self.get_daily_deaths_and_cases,
             'get_weekly_deaths_history': self.get_weekly_deaths_history,
             'get_comparison_covid_deaths': self.get_comparison_covid_deaths,
         }
@@ -280,9 +302,12 @@ class StatisticsView(generic.TemplateView):
             graph_data.append({
                 'y': weekly_deaths_data[i],
                 'type': 'box',
-                'name': f"Week {i + 1}"
+                'name': str(i + 1)
             })
-        graph_layout = get_base_layout('Weekly Deaths Data Summarization from 2011 to Present')
+
+        graph_layout = get_base_layout('Weekly Deaths Data Summarization from 2011 to Present',
+                                       xtitle='Week of the Year', ytitle='Number of Deaths')
+        graph_layout['xaxis']['showgrid'] = False
         graph_layout['showlegend'] = False
         return {'graph_layout': graph_layout, 'graph_data': graph_data}
 
@@ -293,66 +318,66 @@ class StatisticsView(generic.TemplateView):
             expr = (F('death_count_1') + F('death_count_2') + F('death_count_3') +
                     F('death_count_4') + F('death_count_5'))
 
-            weekly_deaths_history_query = (WeeklyDeaths.objects.values('week_number')
-                                           .filter(Q(year=2011))
-                                           .annotate(death_sums=expr)
-                                           .values_list('week_number', 'death_sums'))
+            weekly_deaths_averages = get_average_deaths_by_week()
 
-            weekly_deaths_2019_query = (WeeklyDeaths.objects.values('week_number')
-                                        .filter(Q(year=2019))
-                                        .annotate(death_sums=expr)
-                                        .values_list('week_number', 'death_sums'))
+            weekly_deaths_2011 = list(WeeklyDeaths.objects.values('week_number')
+                                      .filter(Q(year=2011) & Q(week_number__lt=53))
+                                      .annotate(death_sums=expr)
+                                      .values_list('death_sums', flat=True))
 
-            weekly_deaths_2020_query = (WeeklyDeaths.objects.values('week_number')
-                                        .filter(Q(year=2020))
-                                        .annotate(death_sums=expr)
-                                        .values_list('week_number', 'death_sums'))
+            weekly_deaths_2019 = list(WeeklyDeaths.objects.values('week_number')
+                                      .filter(Q(year=2019) & Q(week_number__lt=53))
+                                      .annotate(death_sums=expr)
+                                      .values_list('death_sums', flat=True))
 
-            return (list(map(list, zip(*weekly_deaths_history_query))),
-                    list(map(list, zip(*weekly_deaths_2019_query))),
-                    list(map(list, zip(*weekly_deaths_2020_query))))
+            weekly_deaths_2020 = list(WeeklyDeaths.objects.values('week_number')
+                                      .filter(Q(year=2020) & Q(week_number__lt=53))
+                                      .annotate(death_sums=expr)
+                                      .values_list('death_sums', flat=True))
 
-        weekly_deaths_history, weekly_deaths_2019, weekly_deaths_2020 = self.from_cache_or_compute(compute, view_id)
-        if not weekly_deaths_history:
-            weekly_deaths_history = [[], []]
-        if not weekly_deaths_2019:
-            weekly_deaths_2019 = [[], []]
-        if not weekly_deaths_2020:
-            weekly_deaths_2020 = [[], []]
+            return weekly_deaths_averages, weekly_deaths_2011, weekly_deaths_2019, weekly_deaths_2020
+
+        weekly_deaths = self.from_cache_or_compute(compute, view_id)
+        week_numbers = list(range(1, 53))
 
         graph_data = [
             {
-                'x': weekly_deaths_history[0],
-                'y': weekly_deaths_history[1],
+                'x': week_numbers,
+                'y': weekly_deaths[0],
+                'type': 'line',
+                'name': '2011-2019 average'
+            },
+            {
+                'x': week_numbers,
+                'y': weekly_deaths[1],
                 'type': 'line',
                 'name': '2011'
             },
             {
-                'x': weekly_deaths_2019[0],
-                'y': weekly_deaths_2019[1],
+                'x': week_numbers,
+                'y': weekly_deaths[2],
                 'type': 'line',
                 'name': '2019'
             },
             {
-                'x': weekly_deaths_2020[0],
-                'y': weekly_deaths_2020[1],
+                'x': week_numbers,
+                'y': weekly_deaths[3],
                 'type': 'line',
                 'name': '2020 (year of pandemic)'
             }
         ]
 
-        graph_layout = get_base_layout('Comparision of Weekly Deaths for 2011, 2019 and 2020 (year of pandemic)',
+        graph_layout = get_base_layout('Comparison of Weekly Deaths for 2011, 2019 and 2020 (year of pandemic)',
                                        xtitle='Week of Year', ytitle='Number of Deaths for Week')
         graph_layout['showlegend'] = True
         return {'graph_layout': graph_layout, 'graph_data': graph_data}
 
     def get_comparison_covid_deaths(self):
         view_id = int(self.request.GET['graphViewID'])
+        expr = (F('death_count_1') + F('death_count_2') + F('death_count_3') +
+                F('death_count_4') + F('death_count_5'))
 
-        def compute():
-            expr = (F('death_count_1') + F('death_count_2') + F('death_count_3') +
-                    F('death_count_4') + F('death_count_5'))
-
+        def compute_overall_proportion():
             if WeeklyDeaths.objects.exists():
                 total_deaths = (WeeklyDeaths.objects.values('week_number')
                                 .filter(Q(year=2020))
@@ -368,138 +393,220 @@ class StatisticsView(generic.TemplateView):
                                 .get("total_deaths__sum", 0))
             else:
                 covid_deaths = 0
-
             return total_deaths, covid_deaths
 
-        total_deaths_2020, total_covid_deaths = self.from_cache_or_compute(compute, view_id)
-        deaths_not_covid = total_deaths_2020 - total_covid_deaths
+        def compute_weekly_proportions():
+            weekly_deaths = (CovidDeath.objects
+                             .annotate(week=ExtractWeek('date_of_death'))
+                             .values('week')
+                             .annotate(count=Count('week')).values_list('week', 'count'))
 
-        graph_data = [
-            {
-                'labels': ["Deaths to COVID-19", "Other Deaths"],
-                'values': [total_covid_deaths, deaths_not_covid],
-                'type': 'pie',
-            }
-        ]
+            weekly_deaths_dict = dict(weekly_deaths)
+            weekly_deaths_list = []
+            weekly_death_averages = get_average_deaths_by_week()
+            for week_number, weekly_average in enumerate(weekly_death_averages):
+                weekly_deaths_list.append(weekly_deaths_dict.get(week_number, 0))
+            return weekly_deaths_list, weekly_death_averages
 
-        graph_layout = get_base_layout('Proportion of COVID-19 Deaths to All Deaths in 2020 for the Czech Republic')
-        graph_layout['showlegend'] = True
-        return {'graph_layout': graph_layout, 'graph_data': graph_data}
+        if view_id == 0:
+            total_deaths_2020, total_covid_deaths = self.from_cache_or_compute(compute_overall_proportion, view_id)
+            deaths_not_covid = total_deaths_2020 - total_covid_deaths
+
+            graph_data = [
+                {
+                    'labels': ["Deaths to COVID-19", "Other Deaths"],
+                    'values': [total_covid_deaths, deaths_not_covid],
+                    'type': 'pie',
+                }
+            ]
+
+            graph_layout = get_base_layout('Proportion of COVID-19 Deaths to All Deaths in 2020 for the Czech Republic')
+            graph_layout['showlegend'] = True
+            return {'graph_layout': graph_layout, 'graph_data': graph_data}
+
+        else:
+            weekly_deaths, weekly_averages = self.from_cache_or_compute(compute_weekly_proportions, view_id)
+            differences = [max(x - y, 0) for (x, y) in zip(weekly_averages, weekly_deaths)]
+            week_numbers = list(range(0, 53))
+            graph_layout = get_base_layout('Weekly Proportions of COVID-19 Deaths to Average Deaths', barmode='overlay',
+                                           xtitle='Week of the Year', ytitle='Number of Deaths')
+            graph_layout['bargap'] = 0.1
+            graph_layout['showlegend'] = True
+            graph_layout['legend']['orientation'] = 'h'
+            graph_layout['barmode'] = 'stack'
+            # graph_layout['yaxis'], graph_layout['xaxis'] = graph_layout['xaxis'], graph_layout['yaxis']
+
+            graph_data = [{
+                'x': week_numbers,
+                'y': weekly_deaths,
+                'orientation': 'v',
+                'name': 'Weekly COVID-19 Deaths',
+                'hoverinfo': 'y',
+                'type': 'bar',
+            }, {
+                'x': week_numbers,
+                'y': differences,
+                'orientation': 'v',
+                'name': 'Weekly Death Averages (2011-2019)',
+                'text': weekly_averages,
+                'hoverinfo': 'text',
+                'type': 'bar',
+            }]
+
+            return {'graph_layout': graph_layout, 'graph_data': graph_data}
 
     def get_death_age_data(self):
         view_id = int(self.request.GET['graphViewID'])
 
+        def compute_weekly_death_ages():
+            annotated = CovidDeath.objects.annotate(week=ExtractWeek('date_of_death'))
+            weekly_age_data = {}
+            for week_number in range(0, 53):
+                weekly_age_data[week_number] = list(annotated.filter(Q(week=week_number)).values_list('age', flat=True))
+            return weekly_age_data
+
         def compute():
             return list(CovidDeath.objects.all().values_list('age', flat=True))
 
-        age_data = self.from_cache_or_compute(compute, view_id)
+        if view_id == 0:
+            age_data = self.from_cache_or_compute(compute, view_id)
 
-        graph_data = [{
-            'y': age_data,
-            'type': 'box',
-            'name': 'Age at death'
-        }]
-        graph_layout = get_base_layout('Age of Dead Patients for COVID-19')
-        graph_layout['showlegend'] = False
-        return {'graph_layout': graph_layout, 'graph_data': graph_data}
+            graph_data = [{
+                'y': age_data,
+                'type': 'box',
+                'name': ''
+            }]
+            graph_layout = get_base_layout('Overall COVID-19 Death Age Statistics', ytitle='Death Age')
+            graph_layout['showlegend'] = False
+            return {'graph_layout': graph_layout, 'graph_data': graph_data}
 
-    def get_impact_covid(self):
+        else:
+            weekly_age_data = self.from_cache_or_compute(compute_weekly_death_ages, view_id)
+
+            # Ignore transition week 53
+            graph_data = []
+            for i in range(0, 52):
+                graph_data.append({
+                    'y': weekly_age_data[i],
+                    'type': 'box',
+                    'name': str(i + 1)
+                })
+
+            graph_layout = get_base_layout('Weekly COVID-19 Death Age Statistics',
+                                           xtitle='Week of the Year', ytitle='Death Age')
+            graph_layout['xaxis']['showgrid'] = False
+            graph_layout['showlegend'] = False
+            return {'graph_layout': graph_layout, 'graph_data': graph_data}
+
+    def get_daily_death_to_case_ratio(self):
         view_id = int(self.request.GET['graphViewID'])
 
-        def compute_cases():
-            if view_id == 0:
-                annotations = {
-                    'confirmed_case_count': Window(expression=Count('report_date'), order_by=F('report_date').asc())
-                }
-                selected_values = ['report_date', 'confirmed_case_count']
-                conf_cases = ConfirmedCase.objects.annotate(**annotations).values_list(*selected_values).distinct()
-                return list(map(list, zip(*conf_cases)))
+        def compute():
+            daily_deaths = (CovidDeath.objects.order_by('date_of_death')
+                            .values_list('date_of_death')
+                            .annotate(Count('date_of_death')))
+            conf_cases = DailyStatistics.objects.values_list('date', 'confirmed_case_count')
+            deaths_dict = dict(daily_deaths)
+            cases_dict = dict(conf_cases)
 
-            elif view_id == 1 or view_id == 2:
-                conf_cases = DailyStatistics.objects.values_list('date', 'confirmed_case_count')
-                return list(map(list, zip(*conf_cases)))
+            start_date = min(daily_deaths.first()[0], conf_cases.first()[0])
+            end_date = max(daily_deaths.last()[0], conf_cases.last()[0])
+            dates = [start_date + timedelta(days=x) for x in range(0, (end_date - start_date).days + 1)]
+            ratios = []
+            for date in dates:
+                deaths = deaths_dict.get(date, 0)
+                cases = max(cases_dict.get(date, 1), 1)
+                ratios.append(deaths / cases)
 
-        def compute_deaths():
-            if view_id == 0:
-                daily_deaths = DailyStatistics.objects.values_list('date', 'deaths_cumulative')
-                return list(map(list, zip(*daily_deaths)))
+            return dates, ratios
 
-            elif view_id == 1 or view_id == 2:
-                daily_deaths = (CovidDeath.objects.order_by('date_of_death')
-                                .values_list('date_of_death')
-                                .annotate(Count('date_of_death')))
-                return list(map(list, zip(*daily_deaths)))
-
-        def compute_impact():
-            if view_id == 0:
-                annotations = {
-                    'confirmed_case_count': Window(expression=Count('report_date'), order_by=F('report_date').asc())}
-                selected_values = ['report_date', 'confirmed_case_count']
-                conf_cases = ConfirmedCase.objects.annotate(**annotations).values_list(*selected_values).distinct()
-                daily_deaths = DailyStatistics.objects.values_list('date', 'deaths_cumulative')
-
-            elif view_id == 1 or view_id == 2:
-                daily_deaths = CovidDeath.objects.order_by('date_of_death').values_list('date_of_death').annotate(
-                    Count('date_of_death'))
-                conf_cases = DailyStatistics.objects.values_list('date', 'confirmed_case_count')
-
-            annotations = []
-            for cases in conf_cases:
-                date_from_case = cases[0]
-                if (view_id == 1 or view_id == 2) and daily_deaths.filter(date_of_death=date_from_case):
-                    query_deaths = list(daily_deaths.filter(date_of_death=date_from_case))
-                    count_impact = query_deaths[0][1] / cases[1]
-                    annotations.append([cases[0], count_impact])
-                elif view_id == 0 and daily_deaths.filter(date=date_from_case):
-                    query_deaths = list(daily_deaths.filter(date=date_from_case))
-                    count_impact = query_deaths[0][1] / cases[1]
-                    annotations.append([cases[0], count_impact])
-                else:
-                    annotations.append([cases[0], 0])
-
-            return list(map(list, zip(*annotations)))
-
-        death_stat = compute_deaths()
-        if not death_stat:
-            death_stat = [[], []]
-
-        test_statistics = compute_cases()
-        if not test_statistics:
-            test_statistics = [[], []]
-
-        impact_covid = self.from_cache_or_compute(compute_impact, view_id)
+        impact_covid = self.from_cache_or_compute(compute, view_id)
         if not impact_covid:
             impact_covid = [[], []]
 
         graph_layouts = {
-            0: get_base_layout('Cumulative Impact of Covid', barmode='overlay',
-                               xtitle='Date', ytitle='Number'),
-            1: get_base_layout('Number of Cases and Deaths per day', barmode='overlay',
-                               xtitle='Date', ytitle='Number'),
-            2: get_base_layout('Ratio of Daily Deaths and Daily Cases (Daily Deaths / Daily Cases)', barmode='overlay',
-                               xtitle='Date', ytitle='Number'),
+            0: get_base_layout('Ratio of Daily Deaths and Daily Cases (Daily Deaths / Daily Cases)',
+                               barmode='overlay', xtitle='Date', ytitle='Ratio')
         }
 
-        if view_id == 2:
-            graph_data = [{
-                'x': impact_covid[0],
-                'y': impact_covid[1],
-                'type': 'line',
-                'name': 'Impact'
-            }]
+        graph_data = [{
+            'x': impact_covid[0],
+            'y': impact_covid[1],
+            'type': 'line',
+            'name': 'Death to Case Ratio'
+        }]
 
-            return {'graph_layout': graph_layouts[view_id], 'graph_data': graph_data}
+        return {'graph_layout': graph_layouts[view_id], 'graph_data': graph_data}
+
+    def get_daily_deaths_and_cases(self):
+        view_id = int(self.request.GET['graphViewID'])
+
+        def compute():
+            daily_cases = DailyStatistics.objects.values_list('date', 'confirmed_case_count')
+            daily_deaths = (CovidDeath.objects.order_by('date_of_death')
+                            .values_list('date_of_death')
+                            .annotate(Count('date_of_death')))
+            return list(map(list, zip(*daily_cases))), list(map(list, zip(*daily_deaths)))
+
+        case_stats, death_stats = self.from_cache_or_compute(compute, view_id)
+        if not death_stats:
+            death_stats = [[], []]
+        if not case_stats:
+            case_stats = [[], []]
+
+        graph_layouts = {
+            0: get_base_layout('Number of Cases and Deaths per day',
+                               barmode='overlay', xtitle='Date', ytitle='Number')
+        }
 
         graph_data = [
             {
-                'x': test_statistics[0],
-                'y': test_statistics[1],
+                'x': case_stats[0],
+                'y': case_stats[1],
                 'type': 'line',
                 'name': 'Cases'
             },
             {
-                'x': death_stat[0],
-                'y': death_stat[1],
+                'x': death_stats[0],
+                'y': death_stats[1],
+                'type': 'line',
+                'name': 'Deaths'
+            }
+        ]
+        return {'graph_layout': graph_layouts[view_id], 'graph_data': graph_data}
+
+    def get_impact_covid(self):
+        view_id = int(self.request.GET['graphViewID'])
+
+        def compute():
+            daily_deaths = DailyStatistics.objects.values_list('date', 'deaths_cumulative')
+            annotations = {
+                'confirmed_case_count': Window(expression=Count('report_date'), order_by=F('report_date').asc())
+            }
+            selected_values = ['report_date', 'confirmed_case_count']
+            conf_cases = ConfirmedCase.objects.annotate(**annotations).values_list(*selected_values).distinct()
+            return list(map(list, zip(*daily_deaths))), list(map(list, zip(*conf_cases)))
+
+        death_stats, case_stats = self.from_cache_or_compute(compute, view_id)
+        if not death_stats:
+            death_stats = [[], []]
+        if not case_stats:
+            case_stats = [[], []]
+
+        graph_layouts = {
+            0: get_base_layout('Cumulative Impact of COVID-19', barmode='overlay', xtitle='Date', ytitle='Number')
+        }
+
+        graph_data = [
+            {
+                'x': case_stats[0],
+                'y': case_stats[1],
+                'type': 'line',
+                'name': 'Cases'
+            },
+            {
+                'x': death_stats[0],
+                'y': death_stats[1],
                 'type': 'line',
                 'name': 'Deaths'
             }
@@ -820,7 +927,7 @@ class StatisticsView(generic.TemplateView):
                 'action': 'get_daily_statistics',
             },
             'deaths_age_graph': {
-                'tabs': ['Box View'],
+                'tabs': ['Box View', 'Box View by Week'],
                 'action': 'get_death_age_data',
             },
             'weekly_deaths_graph': {
@@ -831,12 +938,20 @@ class StatisticsView(generic.TemplateView):
                 'tabs': ['Line View'],
                 'action': 'get_weekly_deaths_history',
             },
-            'impact_covid': {
-                'tabs': ['    ', 'Line View', 'Line View'],
+            'cumulative_impact': {
+                'tabs': ['Line View'],
                 'action': 'get_impact_covid',
             },
+            'daily_deaths_and_cases': {
+                'tabs': ['Line View'],
+                'action': 'get_daily_deaths_and_cases',
+            },
+            'daily_death_to_case_ratio': {
+                'tabs': ['Line View'],
+                'action': 'get_daily_death_to_case_ratio',
+            },
             'get_comparison_covid_deaths': {
-                'tabs': ['Pie View'],
+                'tabs': ['Pie View', 'Ratio Bar View'],
                 'action': 'get_comparison_covid_deaths',
             },
         }
