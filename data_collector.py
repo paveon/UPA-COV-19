@@ -1,6 +1,7 @@
 import pymongo
 from datetime import *
 from covid.covid_app.download_utils import download
+from argparse import ArgumentParser
 
 URL_COVID_RHO_CONFIRMED_CASES = 'https://onemocneni-aktualne.mzcr.cz/api/v2/covid-19/osoby.json'
 URL_COVID_RHO_RECOVERED_PERSONS = 'https://onemocneni-aktualne.mzcr.cz/api/v2/covid-19/vyleceni.json'
@@ -35,9 +36,16 @@ def process_mzcr_dataset(begin_date, source_response):
     if begin_date != end_date:
         filtered = []
         for record in dataset_json['data']:
+            if not (record['datum'] and record['vek'] and record['pohlavi'] and record['okres_lau_kod']):
+                continue
+
             record['datum'] = datetime.strptime(record['datum'], '%Y-%m-%d')
-            if in_date_range(record['datum'], begin_date, end_date):
-                filtered.append(record)
+            if not in_date_range(record['datum'], begin_date, end_date) or not record['vek']:
+                continue
+
+            record.pop('kraj_nuts_kod', None)
+            filtered.append(record)
+
         return filtered, end_date_str
     else:
         return [], end_date_str
@@ -105,9 +113,18 @@ def process_csu_dataset(begin_date, source_response):
 
 
 def main():
-    db_client = pymongo.MongoClient("mongodb://localhost:27017/")
+    parser = ArgumentParser()
+    parser.add_argument("-p", "--port", type=int, default=27017, help="port on which the mongodb database is running")
+    parser.add_argument("-d", "--drop", action="store_true",
+                        help="drops existing covid collection and performs clean import")
+
+    args = parser.parse_args()
+
+    db_client = pymongo.MongoClient(f"mongodb://localhost:{str(args.port)}/")
+    if args.drop:
+        db_client.drop_database('covid_data')
+
     print(f"Existing DBs: {db_client.list_database_names()}")
-    db_client.drop_database('covid_data')
     db = db_client['covid_data']
     names = db.list_collection_names()
 

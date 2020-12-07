@@ -1,5 +1,7 @@
 import pymongo
 import json
+
+from itertools import islice
 from django.shortcuts import render
 from django.http import JsonResponse
 from django.apps import apps
@@ -30,16 +32,31 @@ def apply_mapping(mapping, document):
 
 
 def import_collection(covid_db, collection_name, model_cls, mapping, begin_date=None, date_field_name=None):
+    print(f"Importing collection '{collection_name}'")
     if collection_name not in covid_db.list_collection_names():
         return
+
     collection = covid_db[collection_name]
     if begin_date:
         date_filter = {date_field_name: {'$gt': datetime.combine(begin_date, datetime.min.time())}}
         cursor = collection.find(date_filter)
     else:
         cursor = collection.find({})
+
+    print(f"    Creating '{model_cls.__name__}' objects")
     objects = [model_cls(**apply_mapping(mapping, document)) for document in cursor]
-    model_cls.objects.bulk_create(objects)
+    print(f"    Inserting '{len(objects)}' objects into the database")
+
+    def chunker(seq, chunk_size):
+        for pos in range(0, len(seq), chunk_size):
+            yield seq[pos:pos + chunk_size]
+
+    batch_idx = 0
+    batch_size = 10000
+    for object_batch in chunker(objects, batch_size):
+        print(f"    [{batch_idx * batch_size} - {(batch_idx * batch_size) + len(object_batch)}]")
+        model_cls.objects.bulk_create(object_batch, batch_size)
+        batch_idx += 1
 
 
 def get_base_layout(title, xtitle=None, ytitle=None, barmode=None, xtickvals=None, xticktext=None, ytickvals=None,
@@ -58,8 +75,6 @@ def get_base_layout(title, xtitle=None, ytitle=None, barmode=None, xtickvals=Non
         'legend': {'font': {'color': 'white'}},
         'paper_bgcolor': 'rgb(45, 38, 38)',
         'plot_bgcolor': 'rgb(45, 38, 38)',
-        # 'paper_bgcolor': 'rgb(243, 243, 243)',
-        # 'plot_bgcolor': 'rgb(243, 243, 243)',
         'barmode': barmode,
     }
 
@@ -75,8 +90,6 @@ class StatisticsView(generic.TemplateView):
         WeeklyDeaths.objects.all().delete()
         DailyStatistics.objects.all().delete()
         cache.delete_many(self.get_actions.keys())
-        # return render(request, 'covid_app/index.html')
-        # return HttpResponseRedirect(reverse('covid_app:index'))
 
     def populate_area_tables(self):
         NUTS_0_AREA.objects.all().delete()
@@ -150,7 +163,6 @@ class StatisticsView(generic.TemplateView):
             'deaths_cumulative': 'kumulativni_pocet_umrti'
         }
 
-
     def update_data(self):
         self.cache_regions()
         models_to_update = [
@@ -207,7 +219,6 @@ class StatisticsView(generic.TemplateView):
         self.daily_stats_mapping = None
         self.recovered_mapping = None
 
-
         self.post_actions = {
             'populate_area_tables': self.populate_area_tables,
             'import_data': self.import_data,
@@ -227,7 +238,6 @@ class StatisticsView(generic.TemplateView):
             'get_weekly_deaths_history': self.get_weekly_deaths_history,
             'get_comparison_covid_deaths': self.get_comparison_covid_deaths,
         }
-        # print(f"Existing DBs: {db_client.list_database_names()}")
 
     def from_cache_or_compute(self, compute_func, view_id):
         action_name = self.request.GET['action']
@@ -261,6 +271,8 @@ class StatisticsView(generic.TemplateView):
             return list(grouped.values())
 
         weekly_deaths_data = self.from_cache_or_compute(compute, view_id)
+        if not weekly_deaths_data:
+            weekly_deaths_data = [[]] * 52
 
         # Ignore transition week 53
         graph_data = []
@@ -281,37 +293,56 @@ class StatisticsView(generic.TemplateView):
             expr = (F('death_count_1') + F('death_count_2') + F('death_count_3') +
                     F('death_count_4') + F('death_count_5'))
 
-            weekly_deaths_history_query = (WeeklyDeaths.objects.values('week_number').filter(Q(year=2011)).annotate(death_sums=expr).values_list('week_number', 'death_sums'))
-            weekly_deaths_2019_query = (WeeklyDeaths.objects.values('week_number').filter(Q(year=2019)).annotate(death_sums=expr).values_list('week_number', 'death_sums'))
-            weekly_deaths_2020_query = (WeeklyDeaths.objects.values('week_number').filter(Q(year=2020)).annotate(death_sums=expr).values_list('week_number', 'death_sums'))
-            return list(map(list, zip(*weekly_deaths_history_query))),list(map(list, zip(*weekly_deaths_2019_query))), list(map(list, zip(*weekly_deaths_2020_query)))
+            weekly_deaths_history_query = (WeeklyDeaths.objects.values('week_number')
+                                           .filter(Q(year=2011))
+                                           .annotate(death_sums=expr)
+                                           .values_list('week_number', 'death_sums'))
 
+            weekly_deaths_2019_query = (WeeklyDeaths.objects.values('week_number')
+                                        .filter(Q(year=2019))
+                                        .annotate(death_sums=expr)
+                                        .values_list('week_number', 'death_sums'))
 
-        weekly_deaths_history = self.from_cache_or_compute(compute, view_id)[0]
-        weekly_deaths_2019 = self.from_cache_or_compute(compute, view_id)[1]
-        weekly_deaths_2020 = self.from_cache_or_compute(compute, view_id)[2]
+            weekly_deaths_2020_query = (WeeklyDeaths.objects.values('week_number')
+                                        .filter(Q(year=2020))
+                                        .annotate(death_sums=expr)
+                                        .values_list('week_number', 'death_sums'))
 
-        graph_data = [{
-            'x': weekly_deaths_history[0],
-            'y': weekly_deaths_history[1],
-            'type': 'line',
-            'name': '2011'
+            return (list(map(list, zip(*weekly_deaths_history_query))),
+                    list(map(list, zip(*weekly_deaths_2019_query))),
+                    list(map(list, zip(*weekly_deaths_2020_query))))
+
+        weekly_deaths_history, weekly_deaths_2019, weekly_deaths_2020 = self.from_cache_or_compute(compute, view_id)
+        if not weekly_deaths_history:
+            weekly_deaths_history = [[], []]
+        if not weekly_deaths_2019:
+            weekly_deaths_2019 = [[], []]
+        if not weekly_deaths_2020:
+            weekly_deaths_2020 = [[], []]
+
+        graph_data = [
+            {
+                'x': weekly_deaths_history[0],
+                'y': weekly_deaths_history[1],
+                'type': 'line',
+                'name': '2011'
             },
             {
-            'x': weekly_deaths_2019[0],
-            'y': weekly_deaths_2019[1],
-            'type': 'line',
-            'name': '2019'
+                'x': weekly_deaths_2019[0],
+                'y': weekly_deaths_2019[1],
+                'type': 'line',
+                'name': '2019'
             },
             {
-            'x': weekly_deaths_2020[0],
-            'y': weekly_deaths_2020[1],
-            'type': 'line',
-            'name': '2020 (year of pandemic)'
+                'x': weekly_deaths_2020[0],
+                'y': weekly_deaths_2020[1],
+                'type': 'line',
+                'name': '2020 (year of pandemic)'
             }
-            ]
+        ]
 
-        graph_layout = get_base_layout('Comparision of Weekly Deaths for 2011, 2019 and 2020 (year of pandemic)', xtitle='Week of Year', ytitle='Number of Deaths for Week')
+        graph_layout = get_base_layout('Comparision of Weekly Deaths for 2011, 2019 and 2020 (year of pandemic)',
+                                       xtitle='Week of Year', ytitle='Number of Deaths for Week')
         graph_layout['showlegend'] = True
         return {'graph_layout': graph_layout, 'graph_data': graph_data}
 
@@ -319,39 +350,46 @@ class StatisticsView(generic.TemplateView):
         view_id = int(self.request.GET['graphViewID'])
 
         def compute():
-
             expr = (F('death_count_1') + F('death_count_2') + F('death_count_3') +
                     F('death_count_4') + F('death_count_5'))
 
-            weekly_deaths_2020_query = (WeeklyDeaths.objects.values('week_number').filter(Q(year=2020)).annotate(death_sums=expr).aggregate(Sum('death_sums')))
-            covid_deaths_query = CovidOverview.objects.values('total_deaths').aggregate(Sum('total_deaths'))
-            return weekly_deaths_2020_query, covid_deaths_query
+            if WeeklyDeaths.objects.exists():
+                total_deaths = (WeeklyDeaths.objects.values('week_number')
+                                .filter(Q(year=2020))
+                                .annotate(death_sums=expr)
+                                .aggregate(Sum('death_sums'))
+                                .get("death_sums__sum", 0))
+            else:
+                total_deaths = 0
 
-        weekly_deaths_2020_dict = self.from_cache_or_compute(compute, view_id)[0]
-        covid_deaths_dict = self.from_cache_or_compute(compute, view_id)[1]
+            if CovidOverview.objects.exists():
+                covid_deaths = (CovidOverview.objects.values('total_deaths')
+                                .aggregate(Sum('total_deaths'))
+                                .get("total_deaths__sum", 0))
+            else:
+                covid_deaths = 0
 
-        total_deaths_2020 = int(weekly_deaths_2020_dict["death_sums__sum"])
-        total_covid_deaths = int(covid_deaths_dict["total_deaths__sum"])
+            return total_deaths, covid_deaths
+
+        total_deaths_2020, total_covid_deaths = self.from_cache_or_compute(compute, view_id)
         deaths_not_covid = total_deaths_2020 - total_covid_deaths
 
         graph_data = [
             {
-            'labels': ["Deaths to COVID-19", "Other Deaths"],
-            'values': [total_covid_deaths, deaths_not_covid],
-            'type': 'pie',
+                'labels': ["Deaths to COVID-19", "Other Deaths"],
+                'values': [total_covid_deaths, deaths_not_covid],
+                'type': 'pie',
             }
-            ]
+        ]
 
         graph_layout = get_base_layout('Proportion of COVID-19 Deaths to All Deaths in 2020 for the Czech Republic')
         graph_layout['showlegend'] = True
         return {'graph_layout': graph_layout, 'graph_data': graph_data}
 
-
     def get_death_age_data(self):
         view_id = int(self.request.GET['graphViewID'])
 
         def compute():
-            # TODO: will get more complex?
             return list(CovidDeath.objects.all().values_list('age', flat=True))
 
         age_data = self.from_cache_or_compute(compute, view_id)
@@ -370,61 +408,80 @@ class StatisticsView(generic.TemplateView):
 
         def compute_cases():
             if view_id == 0:
-                annotations = {'confirmed_case_count': Window(expression=Count('report_date'), order_by=F('report_date').asc())}
+                annotations = {
+                    'confirmed_case_count': Window(expression=Count('report_date'), order_by=F('report_date').asc())
+                }
                 selected_values = ['report_date', 'confirmed_case_count']
                 conf_cases = ConfirmedCase.objects.annotate(**annotations).values_list(*selected_values).distinct()
+                return list(map(list, zip(*conf_cases)))
+
             elif view_id == 1 or view_id == 2:
                 conf_cases = DailyStatistics.objects.values_list('date', 'confirmed_case_count')
-            return list(map(list, zip(*conf_cases)))
+                return list(map(list, zip(*conf_cases)))
 
         def compute_deaths():
             if view_id == 0:
-                daily_deaths = DailyStatistics.objects.values_list('date', 'deaths_cumulative');
+                daily_deaths = DailyStatistics.objects.values_list('date', 'deaths_cumulative')
+                return list(map(list, zip(*daily_deaths)))
+
             elif view_id == 1 or view_id == 2:
-                daily_deaths = CovidDeath.objects.order_by('date_of_death').values_list('date_of_death').annotate(Count('date_of_death'));
-            return list(map(list, zip(*daily_deaths)))
+                daily_deaths = (CovidDeath.objects.order_by('date_of_death')
+                                .values_list('date_of_death')
+                                .annotate(Count('date_of_death')))
+                return list(map(list, zip(*daily_deaths)))
 
         def compute_impact():
             if view_id == 0:
-                annotations = {'confirmed_case_count': Window(expression=Count('report_date'), order_by=F('report_date').asc())}
+                annotations = {
+                    'confirmed_case_count': Window(expression=Count('report_date'), order_by=F('report_date').asc())}
                 selected_values = ['report_date', 'confirmed_case_count']
                 conf_cases = ConfirmedCase.objects.annotate(**annotations).values_list(*selected_values).distinct()
-                daily_deaths = DailyStatistics.objects.values_list('date', 'deaths_cumulative');
+                daily_deaths = DailyStatistics.objects.values_list('date', 'deaths_cumulative')
+
             elif view_id == 1 or view_id == 2:
-                daily_deaths = CovidDeath.objects.order_by('date_of_death').values_list('date_of_death').annotate(Count('date_of_death'))
+                daily_deaths = CovidDeath.objects.order_by('date_of_death').values_list('date_of_death').annotate(
+                    Count('date_of_death'))
                 conf_cases = DailyStatistics.objects.values_list('date', 'confirmed_case_count')
+
             annotations = []
             for cases in conf_cases:
                 date_from_case = cases[0]
                 if (view_id == 1 or view_id == 2) and daily_deaths.filter(date_of_death=date_from_case):
                     query_deaths = list(daily_deaths.filter(date_of_death=date_from_case))
                     count_impact = query_deaths[0][1] / cases[1]
-                    annotations.append([cases[0],count_impact])
+                    annotations.append([cases[0], count_impact])
                 elif view_id == 0 and daily_deaths.filter(date=date_from_case):
                     query_deaths = list(daily_deaths.filter(date=date_from_case))
                     count_impact = query_deaths[0][1] / cases[1]
-                    annotations.append([cases[0],count_impact])
+                    annotations.append([cases[0], count_impact])
                 else:
-                    annotations.append([cases[0],0])
+                    annotations.append([cases[0], 0])
+
             return list(map(list, zip(*annotations)))
 
+        death_stat = compute_deaths()
+        if not death_stat:
+            death_stat = [[], []]
 
-        death_stat = compute_deaths();
-        test_statistics = compute_cases();
+        test_statistics = compute_cases()
+        if not test_statistics:
+            test_statistics = [[], []]
+
         impact_covid = self.from_cache_or_compute(compute_impact, view_id)
+        if not impact_covid:
+            impact_covid = [[], []]
 
         graph_layouts = {
-            0: get_base_layout('Cumulative Impact of Covid', barmode='overlay', xtitle='Date',
-                               ytitle='Number'),
+            0: get_base_layout('Cumulative Impact of Covid', barmode='overlay',
+                               xtitle='Date', ytitle='Number'),
             1: get_base_layout('Number of Cases and Deaths per day', barmode='overlay',
                                xtitle='Date', ytitle='Number'),
             2: get_base_layout('Ratio of Daily Deaths and Daily Cases (Daily Deaths / Daily Cases)', barmode='overlay',
-                                                  xtitle='Date', ytitle='Number'),
+                               xtitle='Date', ytitle='Number'),
         }
 
-        if (view_id == 2):
-            graph_data = [
-            {
+        if view_id == 2:
+            graph_data = [{
                 'x': impact_covid[0],
                 'y': impact_covid[1],
                 'type': 'line',
@@ -433,18 +490,20 @@ class StatisticsView(generic.TemplateView):
 
             return {'graph_layout': graph_layouts[view_id], 'graph_data': graph_data}
 
-        graph_data = [{
-            'x': test_statistics[0],
-            'y': test_statistics[1],
-            'type': 'line',
-            'name': 'Cases'
-        },
-        {
-            'x': death_stat[0],
-            'y': death_stat[1],
-            'type': 'line',
-            'name': 'Deaths'
-        }]
+        graph_data = [
+            {
+                'x': test_statistics[0],
+                'y': test_statistics[1],
+                'type': 'line',
+                'name': 'Cases'
+            },
+            {
+                'x': death_stat[0],
+                'y': death_stat[1],
+                'type': 'line',
+                'name': 'Deaths'
+            }
+        ]
         return {'graph_layout': graph_layouts[view_id], 'graph_data': graph_data}
 
     def get_cases_by_area(self):
@@ -460,7 +519,8 @@ class StatisticsView(generic.TemplateView):
 
         area_cases = self.from_cache_or_compute(compute, view_id)
 
-        if (view_id == 0):
+        graph_data = []
+        if view_id == 0:
             graph_data = [{
                 'x': area_cases[0],
                 'y': area_cases[1],
@@ -468,7 +528,7 @@ class StatisticsView(generic.TemplateView):
                 'name': 'Region Case Counts'
             }]
 
-        if (view_id == 1):
+        if view_id == 1:
             graph_data = [{
                 'labels': area_cases[0],
                 'values': area_cases[1],
@@ -485,13 +545,16 @@ class StatisticsView(generic.TemplateView):
 
         def compute():
             q_object = ~Q(code='CZ999') & ~Q(code='CZZZZ')  # Ignore extra region and unknown region
-            area_deaths_query = (NUTS_3_AREA.objects.filter(q_object).annotate(death_count=Count('nuts_4_area__coviddeath')).values_list('name', 'death_count'))
+            area_deaths_query = (
+                NUTS_3_AREA.objects.filter(q_object).annotate(death_count=Count('nuts_4_area__coviddeath')).values_list(
+                    'name', 'death_count'))
 
             return list(map(list, zip(*area_deaths_query)))
 
         area_deaths = self.from_cache_or_compute(compute, view_id)
 
-        if (view_id == 0):
+        graph_data = []
+        if view_id == 0:
             graph_data = [{
                 'x': area_deaths[0],
                 'y': area_deaths[1],
@@ -499,7 +562,7 @@ class StatisticsView(generic.TemplateView):
                 'name': 'Region Death Counts'
             }]
 
-        if (view_id == 1):
+        if view_id == 1:
             graph_data = [{
                 'labels': area_deaths[0],
                 'values': area_deaths[1],
@@ -508,101 +571,110 @@ class StatisticsView(generic.TemplateView):
             }]
 
         graph_layout = get_base_layout('Region Counts of COVID-19 Deaths',
-                                               xtitle='Region', ytitle='Number of Deaths')
+                                       xtitle='Region', ytitle='Number of Deaths')
         return {'graph_layout': graph_layout, 'graph_data': graph_data}
 
     def get_cases_by_state(self):
         view_id = int(self.request.GET['graphViewID'])
 
         def compute():
-            q_object = ~Q(code='CZ') # Ignore Czech Republic
-            state_cases_query = NUTS_0_AREA.objects.filter(q_object).annotate(case_count=Count('confirmedcase')).order_by('-case_count').values_list('name', 'case_count')
+            q_object = ~Q(code='CZ')  # Ignore Czech Republic
+            state_cases_query = NUTS_0_AREA.objects.filter(q_object).annotate(
+                case_count=Count('confirmedcase')).order_by('-case_count').values_list('name', 'case_count')
 
             return list(map(list, zip(*state_cases_query)))
 
         state_cases = self.from_cache_or_compute(compute, view_id)
 
         # in both graphs ignore foreign states with no confirmed Czech inhabitans
-
-        if (view_id == 0):
+        graph_data = []
+        graph_layout = {}
+        if view_id == 0:
 
             graph_data = [{
                 'x': state_cases[0],
                 'y': state_cases[1],
                 'type': 'bar',
                 'transforms': [{
-                'type': 'filter',
-                'target': 'y',
-                'operation': '>',
-                'value': 0
+                    'type': 'filter',
+                    'target': 'y',
+                    'operation': '>',
+                    'value': 0
                 }],
                 'name': 'State Case Counts'
-                }]
-            graph_layout = get_base_layout('COVID-19 Cases Confirmed for Czech Inhabitans in Abroad', ytitle='Number of Cases')
+            }]
+            graph_layout = get_base_layout('COVID-19 Cases Confirmed for Czech Inhabitans in Abroad',
+                                           ytitle='Number of Cases')
 
-        elif (view_id == 1):
+        elif view_id == 1:
             graph_data = [{
                 'labels': state_cases[0],
                 'values': state_cases[1],
                 'type': 'pie',
                 'transforms': [{
-                'type': 'filter',
-                'target': 'values',
-                'operation': '>',
-                'value': 49
+                    'type': 'filter',
+                    'target': 'values',
+                    'operation': '>',
+                    'value': 49
                 }],
                 'name': 'Top State Case Counts'
-                }]
+            }]
 
-            graph_layout = get_base_layout('Foreign States With At Least 50 Confirmed Czech Inhabitans',xtitle='State', ytitle='Number of Cases')
+            graph_layout = get_base_layout('Foreign States With At Least 50 Confirmed Czech Inhabitans', xtitle='State',
+                                           ytitle='Number of Cases')
 
-        #graph_layout = get_base_layout('COVID-19 Cases Confirmed for Czech Inhabitans in Abroad',xtitle='State', ytitle='Number of Cases')
         return {'graph_layout': graph_layout, 'graph_data': graph_data}
 
     def get_daily_statistics(self):
         view_id = int(self.request.GET['graphViewID'])
 
-        if (view_id == 0):
-
+        graph_data = []
+        graph_layout = {}
+        if view_id == 0:
             def compute():
                 testing_query = DailyStatistics.objects.values_list('date', 'test_count')
                 return list(map(list, zip(*testing_query)))
 
             test_statistics = self.from_cache_or_compute(compute, view_id)
+            if not test_statistics:
+                test_statistics = [[], []]
 
             graph_data = [{
                 'x': test_statistics[0],
                 'y': test_statistics[1],
                 'type': 'line',
                 'name': 'Development of Performed Tests'
-                }]
+            }]
 
-            graph_layout = get_base_layout('Development of Performed COVID-19 Tests', xtitle='Date', ytitle='Number of Tests')
+            graph_layout = get_base_layout('Development of Performed COVID-19 Tests', xtitle='Date',
+                                           ytitle='Number of Tests')
 
-        if (view_id == 1):
-                def compute():
-                    recovered_cases_query = DailyStatistics.objects.values_list('date', 'recovered_cumulative')
-                    return list(map(list, zip(*recovered_cases_query)))
+        if view_id == 1:
+            def compute():
+                recovered_cases_query = DailyStatistics.objects.values_list('date', 'recovered_cumulative')
+                return list(map(list, zip(*recovered_cases_query)))
 
-                recovered_cases = self.from_cache_or_compute(compute, view_id)
+            recovered_cases = self.from_cache_or_compute(compute, view_id)
+            if not recovered_cases:
+                recovered_cases.append([])
+                recovered_cases.append([])
 
-                graph_data = [{
+            graph_data = [{
                 'x': recovered_cases[0],
                 'y': recovered_cases[1],
                 'type': 'line',
                 'name': 'Development of Recovered Cases'
-                }]
+            }]
 
-                graph_layout = get_base_layout('Development of COVID-19 Recovered Cases', xtitle='Date', ytitle='Cumulative Number of Recovered Cases')
+            graph_layout = get_base_layout('Development of COVID-19 Recovered Cases', xtitle='Date',
+                                           ytitle='Cumulative Number of Recovered Cases')
         return {'graph_layout': graph_layout, 'graph_data': graph_data}
-
 
     def get_case_age_distribution(self):
         view_id = int(self.request.GET['graphViewID'])
 
         def compute():
             if view_id < 2:
-                # TODO: probably could be done in a single query with some clever annotation use?
                 query_age_categories = {}
                 male_cases = ConfirmedCase.objects.filter(gender='M')
                 female_cases = ConfirmedCase.objects.filter(gender='Z')
@@ -726,7 +798,6 @@ class StatisticsView(generic.TemplateView):
     def get_context_data(self, **kwargs):
         self.context = super().get_context_data(**kwargs)
 
-        # TODO: avoid using action strings at multiple places, bad for maintainability
         graph_divs = {
             'cases_age_distribution_graph': {
                 'tabs': ['Pyramid View', 'Stacked Bar View'],
@@ -745,7 +816,7 @@ class StatisticsView(generic.TemplateView):
                 'action': 'get_state_cases',
             },
             'daily_statistics_graph': {
-                'tabs': ['Line View' , 'Line View'],
+                'tabs': ['Line View', 'Line View'],
                 'action': 'get_daily_statistics',
             },
             'deaths_age_graph': {
@@ -761,7 +832,7 @@ class StatisticsView(generic.TemplateView):
                 'action': 'get_weekly_deaths_history',
             },
             'impact_covid': {
-                'tabs': ['    ','Line View', 'Line View'],
+                'tabs': ['    ', 'Line View', 'Line View'],
                 'action': 'get_impact_covid',
             },
             'get_comparison_covid_deaths': {
